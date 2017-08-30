@@ -340,6 +340,7 @@ blowfish_init(struct blowfish *ctx, const void *key, int len)
 
     const uint8_t *k = key;
     for (int i = 0; i < 18; i++) {
+        /* big endian */
         ctx->p[i] ^= k[(i * 4 + 0) % len] << 24;
         ctx->p[i] ^= k[(i * 4 + 1) % len] << 16;
         ctx->p[i] ^= k[(i * 4 + 2) % len] <<  8;
