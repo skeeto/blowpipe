@@ -281,7 +281,10 @@ static uint32_t
 blowfish_read(const uint8_t *p)
 {
     /* big endian */
-    return (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | (p[3] << 0);
+    return ((uint32_t)p[0] << 24) |
+           ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] <<  8) |
+           ((uint32_t)p[3] <<  0);
 }
 
 static void
@@ -332,23 +335,34 @@ blowfish_decrypt(struct blowfish *ctx, void *dst, const void *src, size_t len)
     }
 }
 
-void
-blowfish_init(struct blowfish *ctx, const void *key, int len)
+static void
+blowfish_expand(
+        struct blowfish *ctx,
+        const void *key,
+        int len,
+        const void *salt)
 {
-    memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
-    memcpy(ctx->p, blowfish_p, sizeof(blowfish_p));
-
     const uint8_t *k = key;
     for (int i = 0; i < 18; i++) {
-        /* big endian */
-        ctx->p[i] ^= k[(i * 4 + 0) % len] << 24;
-        ctx->p[i] ^= k[(i * 4 + 1) % len] << 16;
-        ctx->p[i] ^= k[(i * 4 + 2) % len] <<  8;
-        ctx->p[i] ^= k[(i * 4 + 3) % len] <<  0;
+        /* little endian */
+        ctx->p[i] ^= (uint32_t)k[(i * 4 + 0) % len] << 24;
+        ctx->p[i] ^= (uint32_t)k[(i * 4 + 1) % len] << 16;
+        ctx->p[i] ^= (uint32_t)k[(i * 4 + 2) % len] << 8;
+        ctx->p[i] ^= (uint32_t)k[(i * 4 + 3) % len] << 0;
     }
+
+    uint32_t esalt[4];
+    esalt[0] = blowfish_read(salt +  0);
+    esalt[1] = blowfish_read(salt +  4);
+    esalt[2] = blowfish_read(salt +  8);
+    esalt[3] = blowfish_read(salt + 12);
 
     uint8_t buf[8] = {0};
     for (int i = 0; i < 18; i += 2) {
+        uint32_t xl = blowfish_read(buf + 0) ^ esalt[(i + 0) % 4];
+        uint32_t xr = blowfish_read(buf + 4) ^ esalt[(i + 1) % 4];
+        blowfish_write(buf + 0, xl);
+        blowfish_write(buf + 4, xr);
         blowfish_encrypt(ctx, buf, buf, 8);
         ctx->p[i + 0] = blowfish_read(buf + 0);
         ctx->p[i + 1] = blowfish_read(buf + 4);
@@ -356,9 +370,48 @@ blowfish_init(struct blowfish *ctx, const void *key, int len)
 
     for (int i = 0; i < 4; i++) {
         for (int j = 0; j < 256; j += 2) {
+            uint32_t xl = blowfish_read(buf + 0) ^ esalt[(j + 2) % 4];
+            uint32_t xr = blowfish_read(buf + 4) ^ esalt[(j + 3) % 4];
+            blowfish_write(buf + 0, xl);
+            blowfish_write(buf + 4, xr);
             blowfish_encrypt(ctx, buf, buf, 8);
             ctx->s[i][j + 0] = blowfish_read(buf + 0);
             ctx->s[i][j + 1] = blowfish_read(buf + 4);
         }
     }
+}
+
+void
+blowfish_init(struct blowfish *ctx, const void *key, int len)
+{
+    unsigned char salt[BLOWFISH_SALT_LENGTH] = {0};
+    memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
+    memcpy(ctx->p, blowfish_p, sizeof(blowfish_p));
+    blowfish_expand(ctx, key, len, &salt);
+}
+
+void
+blowfish_bcrypt(
+        void *digest,
+        const void *pwd,
+        int pwdlen,
+        const void *salt,
+        int cost)
+{
+    struct blowfish ctx[1];
+    memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
+    memcpy(ctx->p, blowfish_p, sizeof(blowfish_p));
+
+    blowfish_expand(ctx, pwd, pwdlen, salt);
+
+    unsigned char zero[BLOWFISH_SALT_LENGTH] = {0};
+    unsigned long long n = 1ULL << cost;
+    for (unsigned long long i = 0; i < n; i++) {
+        blowfish_expand(ctx, pwd, pwdlen, &zero);
+        blowfish_expand(ctx, salt, BLOWFISH_SALT_LENGTH, &zero);
+    }
+
+    memcpy(digest, "OrpheanBeholderScryDoubt", 24);
+    for (int i = 0; i < 64; i++)
+        blowfish_encrypt(ctx, digest, digest, 24);
 }
