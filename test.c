@@ -51,7 +51,6 @@ main(void)
         char output[16];
         blowfish_init(ctx, key, sizeof(key) - 1);
         blowfish_encrypt(ctx, cipher, plain, 16);
-        blowfish_init(ctx, key, sizeof(key) - 1);
         blowfish_decrypt(ctx, output, cipher, 16);
         failures += verify(plain, output, 16);
     }
