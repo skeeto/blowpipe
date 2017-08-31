@@ -436,5 +436,5 @@ blowfish_bcrypt(
         for (int j = 0; j < 6; j += 2)
             blowfish_encipher(ctx, ctext + j, ctext + j + 1);
     for (int i = 0; i < 6; i++)
-        blowfish_write((char *)digest + i * 4, ctext[i]);
+        blowfish_write((uint8_t *)digest + i * 4, ctext[i]);
 }
