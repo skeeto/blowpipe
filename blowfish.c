@@ -403,7 +403,7 @@ blowfish_expand(
 void
 blowfish_init(struct blowfish *ctx, const void *key, int len)
 {
-    assert(len >= 1 && len <= 72);
+    assert(len >= BLOWFISH_MIN_KEY_LENGTH && len <= BLOWFISH_MAX_KEY_LENGTH);
 
     unsigned char salt[BLOWFISH_SALT_LENGTH] = {0};
     memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
@@ -419,8 +419,8 @@ blowfish_bcrypt(
         const void *salt,
         int cost)
 {
-    assert(len >= 1 && len <= 72);
-    assert(cost >= 0 && cost <= 63);
+    assert(len >= BLOWFISH_MIN_KEY_LENGTH && len <= BLOWFISH_MAX_KEY_LENGTH);
+    assert(cost >= BLOWFISH_MIN_COST && cost <= BLOWFISH_MAX_COST);
 
     struct blowfish ctx[1];
     memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));

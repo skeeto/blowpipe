@@ -7,9 +7,13 @@
 
 #include <stdint.h>
 
-#define BLOWFISH_BLOCK_LENGTH  8
-#define BLOWFISH_SALT_LENGTH   16
-#define BLOWFISH_DIGEST_LENGTH 24
+#define BLOWFISH_BLOCK_LENGTH    8
+#define BLOWFISH_SALT_LENGTH     16
+#define BLOWFISH_DIGEST_LENGTH   24
+#define BLOWFISH_MIN_KEY_LENGTH  1
+#define BLOWFISH_MAX_KEY_LENGTH  72
+#define BLOWFISH_MIN_COST        0
+#define BLOWFISH_MAX_COST        63
 
 struct blowfish {
     uint32_t p[18];
