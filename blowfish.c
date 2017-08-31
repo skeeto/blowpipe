@@ -364,7 +364,7 @@ blowfish_expand(
 {
     const uint8_t *k = key;
     for (int i = 0; i < 18; i++) {
-        /* little endian */
+        /* big endian */
         ctx->p[i] ^= (uint32_t)k[(i * 4 + 0) % len] << 24;
         ctx->p[i] ^= (uint32_t)k[(i * 4 + 1) % len] << 16;
         ctx->p[i] ^= (uint32_t)k[(i * 4 + 2) % len] << 8;
