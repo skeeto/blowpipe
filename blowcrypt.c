@@ -141,7 +141,7 @@ passphrase_prompt(const char *prompt, char *buf)
     if (tcsetattr(tty, TCSANOW, &new) == -1)
         DIE_ERRNO("tcsetattr()");
 
-    ssize_t z = full_read(tty, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
+    ssize_t z = read(tty, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
     tcsetattr(tty, TCSANOW, &old);
     write(tty, "\n", 1);
 
