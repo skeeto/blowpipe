@@ -84,13 +84,28 @@
         exit(EXIT_FAILURE); \
     } while (0)
 
+static ssize_t
+full_read(int fd, void *buf, size_t len)
+{
+    size_t z = 0;
+    while (z < len) {
+        ssize_t r = read(fd, (char *)buf + z, len - z);
+        if (r == -1)
+            return -1;
+        if (r == 0)
+            break;
+        z += r;
+    }
+    return z;
+}
+
 static void
 gen_iv(void *iv)
 {
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd == -1)
         DIE_ERRNO("/dev/urandom");
-    ssize_t z = read(fd, iv, IV_LENGTH);
+    ssize_t z = full_read(fd, iv, IV_LENGTH);
     if (z < 0)
         DIE_ERRNO("/dev/urandom");
     if (z != IV_LENGTH)
@@ -101,7 +116,7 @@ gen_iv(void *iv)
 static void
 read_iv(int fd, void *iv)
 {
-    ssize_t z = read(fd, iv, IV_LENGTH + 1);
+    ssize_t z = full_read(fd, iv, IV_LENGTH + 1);
     if (z < 0)
         DIE_ERRNO("reading ciphertext");
     if (z < IV_LENGTH)
@@ -126,7 +141,7 @@ passphrase_prompt(const char *prompt, char *buf)
     if (tcsetattr(tty, TCSANOW, &new) == -1)
         DIE_ERRNO("tcsetattr()");
 
-    ssize_t z = read(tty, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
+    ssize_t z = full_read(tty, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
     tcsetattr(tty, TCSANOW, &old);
     write(tty, "\n", 1);
 
@@ -166,7 +181,7 @@ key_read(int fd, void *key, const void *iv, int cost)
      * detect an overly-long key.
      */
     char buf[BLOWFISH_MAX_KEY_LENGTH + 1];
-    ssize_t z = read(fd, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
+    ssize_t z = full_read(fd, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
     if (z < 0)
         DIE_ERRNO("reading key");
     if (z < BLOWFISH_MIN_KEY_LENGTH)
@@ -210,7 +225,7 @@ encrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
     static uint8_t buf[CHUNK_SIZE];
     uint8_t chain[BLOWFISH_BLOCK_LENGTH] = {0};
     for (;;) {
-        ssize_t z = read(in, buf, CHUNK_SIZE);
+        ssize_t z = full_read(in, buf, CHUNK_SIZE);
         if (z < 0)
             DIE_ERRNO("reading plaintext");
 
@@ -253,7 +268,7 @@ decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
     for (;;) {
         memcpy(buf, tail, BLOWFISH_BLOCK_LENGTH);
         size_t avail = CHUNK_SIZE + BLOWFISH_BLOCK_LENGTH - ntail;
-        ssize_t z = read(in, buf + ntail, avail);
+        ssize_t z = full_read(in, buf + ntail, avail);
         if (z < 0)
             DIE_ERRNO("reading ciphertext");
         z += ntail;
@@ -362,7 +377,7 @@ main(int argc, char **argv)
             cost = iv[IV_LENGTH] + 256;
             cost = (cost - iv[IV_LENGTH - 1]) % 256;
             if (cost > BLOWFISH_MAX_COST)
-                DIE("input file is corrupt");
+                DIE("ciphertext is damaged");
             break;
         default:
             fputs("must select encrypt (-E) or decrypt (-D)\n", stderr);
