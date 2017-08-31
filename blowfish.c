@@ -1,4 +1,5 @@
 #include <string.h>
+#include <assert.h>
 #include "blowfish.h"
 
 static const uint32_t blowfish_p[] = {
@@ -334,6 +335,7 @@ blowfish_decipher(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
 void
 blowfish_encrypt(struct blowfish *ctx, void *dst, const void *src, size_t len)
 {
+    assert(len % BLOWFISH_BLOCK_LENGTH == 0);
     for (size_t n = 0; n < len; n += 8) {
         uint32_t bl = blowfish_read((uint8_t *)src + n + 0);
         uint32_t br = blowfish_read((uint8_t *)src + n + 4);
@@ -346,6 +348,7 @@ blowfish_encrypt(struct blowfish *ctx, void *dst, const void *src, size_t len)
 void
 blowfish_decrypt(struct blowfish *ctx, void *dst, const void *src, size_t len)
 {
+    assert(len % BLOWFISH_BLOCK_LENGTH == 0);
     for (size_t n = 0; n < len; n += 8) {
         uint32_t bl = blowfish_read((uint8_t *)src + n + 0);
         uint32_t br = blowfish_read((uint8_t *)src + n + 4);
@@ -400,6 +403,8 @@ blowfish_expand(
 void
 blowfish_init(struct blowfish *ctx, const void *key, int len)
 {
+    assert(len >= 1 && len <= 72);
+
     unsigned char salt[BLOWFISH_SALT_LENGTH] = {0};
     memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
     memcpy(ctx->p, blowfish_p, sizeof(blowfish_p));
@@ -410,20 +415,23 @@ void
 blowfish_bcrypt(
         void *digest,
         const void *pwd,
-        int pwdlen,
+        int len,
         const void *salt,
         int cost)
 {
+    assert(len >= 1 && len <= 72);
+    assert(cost >= 0 && cost <= 63);
+
     struct blowfish ctx[1];
     memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
     memcpy(ctx->p, blowfish_p, sizeof(blowfish_p));
 
-    blowfish_expand(ctx, pwd, pwdlen, salt);
+    blowfish_expand(ctx, pwd, len, salt);
 
     unsigned char zero[BLOWFISH_SALT_LENGTH] = {0};
     unsigned long long n = 1ULL << cost;
     for (unsigned long long i = 0; i < n; i++) {
-        blowfish_expand(ctx, pwd, pwdlen, &zero);
+        blowfish_expand(ctx, pwd, len, &zero);
         blowfish_expand(ctx, salt, BLOWFISH_SALT_LENGTH, &zero);
     }
 

@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#define BLOWFISH_BLOCK_LENGTH  8
 #define BLOWFISH_SALT_LENGTH   16
 #define BLOWFISH_DIGEST_LENGTH 24
 
@@ -24,31 +25,35 @@ void blowfish_init(struct blowfish *, const void *key, int len);
 /* Encrypt a buffer using the given context.
  *
  * The buffer length must be a multiple of the block size (8). The
- * source and destination can be the same buffer.
+ * source and destination can be the same buffer. Blocks are processed
+ * in ECB mode.
  */
 void blowfish_encrypt(struct blowfish *, void *dst, const void *src, size_t);
 
 /* Decrypt a buffer using the given context.
  *
- * The buffer length must be a multiple of the block size (8). The
- * source and destination can be the same buffer.
+ * This function has the same constraints as blowfish_encrypt().
  */
 void blowfish_decrypt(struct blowfish *, void *dst, const void *src, size_t);
 
 /* Compute the bcrypt digest for a given password.
  *
- * The digest is 24 raw bytes (not base-64 encoded).
+ * All inputs and outputs are raw bytes, not base-64 encoded.
+ *
+ * The digest must have space for 24 bytes (BLOWFISH_DIGEST_LENGTH).
  *
  * The password length must be between 1 and 72 bytes. Note: As a
  * convention, OpenBSD's bcrypt() includes the null terminator byte in
  * the key.
  *
- * The salt must be 16 bytes.
+ * The salt must be 16 bytes (BLOWFISH_SALT_LENGTH).
+ *
+ * The cost must be between 0 and 63.
  */
 void blowfish_bcrypt(
     void *digest,
     const void *pwd,
-    int pwdlen,
+    int len,
     const void *salt,
     int cost
 );
