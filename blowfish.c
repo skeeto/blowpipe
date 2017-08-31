@@ -372,10 +372,10 @@ blowfish_expand(
     }
 
     uint32_t esalt[4];
-    esalt[0] = blowfish_read(salt +  0);
-    esalt[1] = blowfish_read(salt +  4);
-    esalt[2] = blowfish_read(salt +  8);
-    esalt[3] = blowfish_read(salt + 12);
+    esalt[0] = blowfish_read((uint8_t *)salt +  0);
+    esalt[1] = blowfish_read((uint8_t *)salt +  4);
+    esalt[2] = blowfish_read((uint8_t *)salt +  8);
+    esalt[3] = blowfish_read((uint8_t *)salt + 12);
 
     uint32_t ctext[2] = {0};
     for (int i = 0; i < 18; i += 2) {
