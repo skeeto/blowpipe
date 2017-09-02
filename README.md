@@ -23,16 +23,15 @@ entirely from the Blowfish cipher:
 * Message authentication code is CBC-MAC (Blowfish in CBC mode).
 
 This tool doesn't open any files for reading and writing. Instead it
-processes standard input to standard output (or from one arbitrary file
-descriptor to another).
+processes standard input to standard output.
 
     $ blowcrypt -E < data.gz > data.gz.enc
     $ blowcrypt -D < data.gz.enc | gunzip > data.txt
 
 Or with a key file:
 
-    $ blowcrypt -E -k3 3<keyfile <data.zip >data.zip.enc
-    $ blowcrypt -D -k3 3<keyfile >data.zip <data.zip.enc
+    $ blowcrypt -E -k keyfile < data.zip > data.zip.enc
+    $ blowcrypt -D -k keyfile > data.zip < data.zip.enc
 
 The CBC-MAC usage is a little dubious, especially considering these are
 variable-length messages. However, it's seeded with a unique, one-time

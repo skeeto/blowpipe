@@ -9,16 +9,15 @@
  * - Message authentication code is CBC-MAC (Blowfish in CBC mode).
  *
  * This tool doesn't open any files for reading and writing. Instead it
- * processes standard input to standard output (or from one arbitrary
- * file descriptor to another).
+ * processes standard input to standard output.
  *
  *   $ gzip < data.txt | blowcrypt -E > data.txt.gz.enc
  *   $ blowcrypt -D < data.txt.gz.enc | gunzip > data.txt
  *
  * Or with a key file:
  *
- *   $ blowcrypt -E -k3 3<keyfile <data.zip >data.zip.enc
- *   $ blowcrypt -D -k3 3<keyfile >data.zip <data.zip.enc
+ *   $ blowcrypt -E -kkeyfile <data.zip >data.zip.enc
+ *   $ blowcrypt -D -kkeyfile >data.zip <data.zip.enc
  *
  * Remember to check the exit code to ensure the output file is valid.
  *
@@ -41,9 +40,7 @@
  *   -D       decrypt standard input to standard output
  *   -E       encrypt standard input to standard output
  *   -c cost  set the bcrypt cost (encryption only)
- *   -i fd    set an alternate file descriptor for stdin
- *   -k fd    read key material from given file descriptor
- *   -o fd    set an alternate file descriptor for stdout
+ *   -k file  read key material from given file
  *
  * ## File format
  *
@@ -314,21 +311,19 @@ decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
 static void
 usage(FILE *o)
 {
-    fprintf(o, "usage: example [-D|-E] [-c cost] [-i fd] [-k fd] [-o fd]\n");
+    fprintf(o, "usage: example [-D|-E] [-c cost] [-k file]\n");
 }
 
 int
 main(int argc, char **argv)
 {
     /* Options */
-    int input = 0;
-    int output = 1;
-    int keyfd = -1;
+    const char *keyfile = 0;
     int cost = -1;
     enum {MODE_ENCRYPT = 1, MODE_DECRYPT} mode = 0;
 
     int option;
-    while ((option = getopt(argc, argv, "DEc:hi:k:o:")) != -1) {
+    while ((option = getopt(argc, argv, "DEc:hk:")) != -1) {
         switch (option) {
             case 'E':
                 mode = MODE_ENCRYPT;
@@ -345,14 +340,8 @@ main(int argc, char **argv)
                 usage(stdout);
                 exit(EXIT_SUCCESS);
                 break;
-            case 'i':
-                input = atoi(optarg);
-                break;
             case 'k':
-                keyfd = atoi(optarg);
-                break;
-            case 'o':
-                output = atoi(optarg);
+                keyfile = optarg;
                 break;
             default:
                 exit(EXIT_FAILURE);
@@ -373,7 +362,7 @@ main(int argc, char **argv)
             gen_iv(iv);
             break;
         case MODE_DECRYPT:
-            read_iv(input, iv);
+            read_iv(STDIN_FILENO, iv);
             cost = iv[IV_LENGTH] + 256;
             cost = (cost - iv[IV_LENGTH - 1]) % 256;
             if (cost > BLOWFISH_MAX_COST)
@@ -387,15 +376,19 @@ main(int argc, char **argv)
 
     /* Derive the key */
     char key[BLOWFISH_DIGEST_LENGTH];
-    if (keyfd == -1) {
+    if (!keyfile) {
         int verify = mode == MODE_ENCRYPT;
         if (cost == -1)
             cost = PASSPHRASE_COST;
         passphrase_kdf(key, iv, cost, verify);
     } else {
+        int fd = open(keyfile, O_RDONLY);
+        if (fd == -1)
+            DIE_ERRNO(keyfile);
         if (cost == -1)
             cost = KEYFILE_COST;
-        key_read(keyfd, key, iv, cost);
+        key_read(fd, key, iv, cost);
+        close(fd);
     }
     iv[IV_LENGTH] = iv[IV_LENGTH - 1] + cost;
     blowfish_init(crypt, key, BLOWFISH_DIGEST_LENGTH);
@@ -409,15 +402,15 @@ main(int argc, char **argv)
     ssize_t z;
     switch (mode) {
         case MODE_ENCRYPT:
-            z = write(output, iv, IV_LENGTH + 1);
+            z = write(STDOUT_FILENO, iv, IV_LENGTH + 1);
             if (z < 0)
                 DIE_ERRNO("writing ciphertext");
             if (z < IV_LENGTH + 1)
                 DIE("failed to write ciphertext");
-            encrypt(input, output, crypt, mac);
+            encrypt(STDIN_FILENO, STDOUT_FILENO, crypt, mac);
             break;
         case MODE_DECRYPT:
-            decrypt(input, output, crypt, mac);
+            decrypt(STDIN_FILENO, STDOUT_FILENO, crypt, mac);
             break;
     }
 }

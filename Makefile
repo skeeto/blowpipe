@@ -17,8 +17,8 @@ check: test blowcrypt key.dat
 	./test
 	for len in $$(seq 0 10) $$(seq 4080 4200); do \
 	    head -c$$len /dev/urandom | \
-	        ./blowcrypt -E -c3 -k3 3<key.dat | \
-	        ./blowcrypt -D     -k3 3<key.dat > /dev/null; \
+	        ./blowcrypt -E -c3 -kkey.dat | \
+	        ./blowcrypt -D     -kkey.dat > /dev/null; \
 	done
 
 clean:
