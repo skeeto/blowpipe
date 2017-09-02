@@ -23,9 +23,9 @@
  *
  * ## Known issues
  *
- * The CBC-MAC usage is a little dubious, especially considering these
- * are variable-length messages. However, it's seeded with a one-time
- * key, different from the CTR mode key.
+ * The CBC-MAC usage sightly dubious, especially considering these are
+ * variable-length messages. However, it's seeded with a one-time key,
+ * different from the CTR mode key.
  *
  * Since Blowfish is a 64-bit block cipher, it's really only safe to
  * encrypt up to a few GBs at a time before birthday attacks become a
@@ -226,14 +226,22 @@ encrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
         if (z < 0)
             DIE_ERRNO("reading plaintext");
 
+        int blocklen = BLOWFISH_BLOCK_LENGTH;
+        size_t nblocks = (z + blocklen - 1) / blocklen;
+        int padding = nblocks * blocklen - z;
+
+        /* Zero-pad last block */
+        memset(buf + z, 0, padding);
+
+        /* Encrypt the buffer */
         ctr = fill(pad, CHUNK_SIZE, ctr, crypt);
-        for (size_t i = 0; i < CHUNK_SIZE; i++)
+        for (size_t i = 0; i < nblocks * BLOWFISH_BLOCK_LENGTH; i++)
             buf[i] ^= pad[i];
 
-        memset(buf + z, 0, CHUNK_SIZE - z);
-        for (size_t i = 0; i < CHUNK_SIZE; i += 8) {
+        /* Compute MAC */
+        for (size_t i = 0; i < nblocks; i++) {
             for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
-                chain[j] ^= buf[i + j];
+                chain[j] ^= buf[i * BLOWFISH_BLOCK_LENGTH + j];
             blowfish_encrypt(mac, chain, chain, BLOWFISH_BLOCK_LENGTH);
         }
 
@@ -280,14 +288,22 @@ decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
         z -= BLOWFISH_BLOCK_LENGTH;
         ntail = BLOWFISH_BLOCK_LENGTH;
 
-        memset(buf + z, 0, CHUNK_SIZE - z);
-        for (size_t i = 0; i < CHUNK_SIZE; i += 8) {
+        int blocklen = BLOWFISH_BLOCK_LENGTH;
+        size_t nblocks = (z + blocklen - 1) / blocklen;
+        int padding = nblocks * blocklen - z;
+
+        /* Zero-pad last block */
+        ctr = fill(pad, CHUNK_SIZE, ctr, crypt);
+        memcpy(buf + z, pad + z, padding);
+
+        /* Compute MAC */
+        for (size_t i = 0; i < nblocks; i++) {
             for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
-                chain[j] ^= buf[i + j];
+                chain[j] ^= buf[i * BLOWFISH_BLOCK_LENGTH + j];
             blowfish_encrypt(mac, chain, chain, BLOWFISH_BLOCK_LENGTH);
         }
 
-        ctr = fill(pad, CHUNK_SIZE, ctr, crypt);
+        /* Decrypt the buffer */
         for (size_t i = 0; i < CHUNK_SIZE; i++)
             buf[i] ^= pad[i];
 

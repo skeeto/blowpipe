@@ -33,7 +33,7 @@ Or with a key file:
     $ blowcrypt -E -k keyfile < data.zip > data.zip.enc
     $ blowcrypt -D -k keyfile > data.zip < data.zip.enc
 
-The CBC-MAC usage is a little dubious, especially considering these are
+The CBC-MAC usage is slightly dubious, especially considering these are
 variable-length messages. However, it's seeded with a unique, one-time
 key, separate from the CTR mode key, so hopefully there aren't any real
 issues.
