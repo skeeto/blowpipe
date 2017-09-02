@@ -15,7 +15,7 @@ key.dat:
 
 check: test blowcrypt key.dat
 	./test
-	for len in $$(seq 0 10) $$(seq 4080 4200); do \
+	for len in $$(seq 0 10) $$(seq 65500 65600); do \
 	    head -c$$len /dev/urandom | \
 	        ./blowcrypt -E -c3 -kkey.dat | \
 	        ./blowcrypt -D     -kkey.dat > /dev/null; \

@@ -6,10 +6,11 @@
  *
  * - The key is derived from a passphrase using bcrypt.
  * - The stream is encrypted with Blowfish in CTR mode.
- * - Message authentication code is CBC-MAC (Blowfish in CBC mode).
+ * - The message authentication code is CBC-MAC (Blowfish in CBC mode).
  *
- * This tool doesn't open any files for reading and writing. Instead it
- * processes standard input to standard output.
+ * This tool doesn't open files for reading and writing. Instead it's
+ * entirely stream oriented, processing standard input to standard
+ * output.
  *
  *   $ gzip < data.txt | blowcrypt -E > data.txt.gz.enc
  *   $ blowcrypt -D < data.txt.gz.enc | gunzip > data.txt
@@ -19,19 +20,19 @@
  *   $ blowcrypt -E -kkeyfile <data.zip >data.zip.enc
  *   $ blowcrypt -D -kkeyfile >data.zip <data.zip.enc
  *
- * Remember to check the exit code to ensure the output file is valid.
+ * On decryption, the tool doesn't produce output until it has been
+ * authenticated. However, the overall output could still be truncated
+ * should something go wrong in the middle of a long stream. If the
+ * stream has been truncated, an error message will be produced and the
+ * exit status will reflect the error.
  *
  * ## Known issues
  *
- * The CBC-MAC usage sightly dubious, especially considering these are
- * variable-length messages. However, it's seeded with a one-time key,
- * different from the CTR mode key.
- *
- * Since Blowfish is a 64-bit block cipher, it's really only safe to
- * encrypt up to a few GBs at a time before birthday attacks become a
- * feasible issue. However, because of the IV, it's perfectly safe to
- * reuse the password or key file to encrypt any amount of data in a
- * separate run. Otherwise, Blowfish is still a solid cipher. Despite
+ * Since Blowfish is a 64-bit block cipher, it's only safe to encrypt up
+ * to a few GBs at a time before birthday attacks become an issue.
+ * However, because of the IV, it's perfectly safe to reuse a password
+ * or key file to encrypt an arbitrary amount of data across separate
+ * limited runs. Otherwise, Blowfish is still a solid cipher. Despite
  * being a toy, this tool is far more secure than the other "bcrypt"
  * file encryption tool.
  *
@@ -44,10 +45,27 @@
  *
  * ## File format
  *
+ * The overall file format:
+ *
  * - 16-byte random initialization vector (IV)
  * - 1-byte bcrypt cost: last IV byte + cost, modulo 256
- * - entire message ciphertext
- * - 8-byte message authentication code
+ * - one or more chunks
+ *
+ * The format is stream-oriented and data is processed in separate
+ * chunks up to 64kB in size, each with its own MAC. A special
+ * zero-length chunk is used to mark the end of the stream, and any data
+ * following this chunk is silently ignored.
+ *
+ * The format for a chunk:
+ *
+ * - 8 byte MAC (continued from previous chunk)
+ * - 2 byte big endian message length, encrypted [msglen]
+ * - (round_up_to_block(msglen) - 2) bytes of encrypted data
+ *
+ * The last block's plaintext is zero padded. The last chunk will have a
+ * "msglen" of 2, making it an empty chunk. Since this chunk is
+ * authenticated, an attacker could not prematurely terminate the stream
+ * without being detected.
  */
 
 #define _POSIX_SOURCE 1
@@ -65,7 +83,7 @@
 #include "blowfish.h"
 
 #define IV_LENGTH       16
-#define CHUNK_SIZE      4096
+#define CHUNK_SIZE      (1UL << 16)
 #define PASSPHRASE_COST 14
 #define KEYFILE_COST    0
 
@@ -218,110 +236,134 @@ static void
 encrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
 {
     uint64_t ctr = 0;
-    static uint8_t pad[CHUNK_SIZE];
-    static uint8_t buf[CHUNK_SIZE];
-    uint8_t chain[BLOWFISH_BLOCK_LENGTH] = {0};
+    static uint8_t chunk[CHUNK_SIZE];
+
+    memset(chunk, 0, BLOWFISH_BLOCK_LENGTH);
     for (;;) {
-        ssize_t z = full_read(in, buf, CHUNK_SIZE);
+        int headerlen = BLOWFISH_BLOCK_LENGTH + 2;
+        ssize_t z = read(in, chunk + headerlen, CHUNK_SIZE - headerlen);
         if (z < 0)
             DIE_ERRNO("reading plaintext");
 
-        int blocklen = BLOWFISH_BLOCK_LENGTH;
-        size_t nblocks = (z + blocklen - 1) / blocklen;
-        int padding = nblocks * blocklen - z;
-
         /* Zero-pad last block */
-        memset(buf + z, 0, padding);
+        size_t blocklen = BLOWFISH_BLOCK_LENGTH;
+        size_t msglen = z + 2;
+        size_t nblocks = (msglen + blocklen - 1) / blocklen;
+        size_t padding = nblocks * blocklen - msglen;
+        memset(chunk + BLOWFISH_BLOCK_LENGTH + msglen + z, 0, padding);
+
+        /* Write chunk length to chunk header */
+        chunk[BLOWFISH_BLOCK_LENGTH + 0] = msglen >> 8;
+        chunk[BLOWFISH_BLOCK_LENGTH + 1] = msglen >> 0;
 
         /* Encrypt the buffer */
-        ctr = fill(pad, CHUNK_SIZE, ctr, crypt);
+        static uint8_t pad[CHUNK_SIZE];
+        ctr = fill(pad, nblocks * BLOWFISH_BLOCK_LENGTH, ctr, crypt);
         for (size_t i = 0; i < nblocks * BLOWFISH_BLOCK_LENGTH; i++)
-            buf[i] ^= pad[i];
+            chunk[i + BLOWFISH_BLOCK_LENGTH] ^= pad[i];
 
         /* Compute MAC */
         for (size_t i = 0; i < nblocks; i++) {
             for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
-                chain[j] ^= buf[i * BLOWFISH_BLOCK_LENGTH + j];
-            blowfish_encrypt(mac, chain, chain, BLOWFISH_BLOCK_LENGTH);
+                chunk[j] ^= chunk[(i + 1) * BLOWFISH_BLOCK_LENGTH + j];
+            blowfish_encrypt(mac, chunk, chunk, BLOWFISH_BLOCK_LENGTH);
         }
 
-        ssize_t w = write(out, buf, z);
+        /* Write encrypted chunk */
+        size_t len = (nblocks + 1) * BLOWFISH_BLOCK_LENGTH;
+        ssize_t w = write(out, chunk, len);
         if (w < 0)
             DIE_ERRNO("reading ciphertext");
-        if (w != z)
+        if (w != len)
             DIE("failed to write ciphertext");
-        if (z < sizeof(buf))
-            break; // done
+
+        if (z == 0)
+            break; // EOF
     }
 
-    ssize_t w = write(out, chain, BLOWFISH_BLOCK_LENGTH);
-    if (w < 0)
-        DIE_ERRNO("writing ciphertext");
-    if (w != BLOWFISH_BLOCK_LENGTH)
-        DIE("failed to write ciphertext");
+}
+
+static uint64_t
+mac_check(uint8_t *mac0, uint8_t *mac1)
+{
+    /* Use integers to (hopefully) get constant-time comparison */
+    uint64_t i0, i1;
+    memcpy(&i0, mac0, BLOWFISH_BLOCK_LENGTH);
+    memcpy(&i1, mac1, BLOWFISH_BLOCK_LENGTH);
+    return i0 ^ i1;
 }
 
 static void
 decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
 {
+    size_t len = 0;
     uint64_t ctr = 0;
     static uint8_t pad[CHUNK_SIZE];
-    static uint8_t buf[CHUNK_SIZE + BLOWFISH_BLOCK_LENGTH];
-    uint8_t chain[BLOWFISH_BLOCK_LENGTH] = {0};
-    uint8_t tail[BLOWFISH_BLOCK_LENGTH];
-    int ntail = 0;
+    static uint8_t chunk[CHUNK_SIZE];
+    uint8_t cbcmac[BLOWFISH_BLOCK_LENGTH] = {0};
+
     for (;;) {
-        memcpy(buf, tail, BLOWFISH_BLOCK_LENGTH);
-        size_t avail = CHUNK_SIZE + BLOWFISH_BLOCK_LENGTH - ntail;
-        ssize_t z = full_read(in, buf + ntail, avail);
-        if (z < 0)
-            DIE_ERRNO("reading ciphertext");
-        z += ntail;
-        ntail = 0;
+        int headerlen = BLOWFISH_BLOCK_LENGTH + 2;
 
-        if (z < BLOWFISH_BLOCK_LENGTH)
-            DIE("premature end of ciphertext");
-
-        /* Move trailing 8 bytes to the tail buffer */
-        uint8_t *s = buf + z - BLOWFISH_BLOCK_LENGTH;
-        memcpy(tail, s, BLOWFISH_BLOCK_LENGTH);
-        z -= BLOWFISH_BLOCK_LENGTH;
-        ntail = BLOWFISH_BLOCK_LENGTH;
-
-        int blocklen = BLOWFISH_BLOCK_LENGTH;
-        size_t nblocks = (z + blocklen - 1) / blocklen;
-        int padding = nblocks * blocklen - z;
-
-        /* Zero-pad last block */
-        ctr = fill(pad, CHUNK_SIZE, ctr, crypt);
-        memcpy(buf + z, pad + z, padding);
-
-        /* Compute MAC */
-        for (size_t i = 0; i < nblocks; i++) {
-            for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
-                chain[j] ^= buf[i * BLOWFISH_BLOCK_LENGTH + j];
-            blowfish_encrypt(mac, chain, chain, BLOWFISH_BLOCK_LENGTH);
+        /* Read in at least the header */
+        while (len < headerlen) {
+            ssize_t z = read(in, chunk + len, CHUNK_SIZE - len);
+            if (z < 0)
+                DIE_ERRNO("reading ciphertext");
+            if (z == 0)
+                DIE("premature end of ciphertext");
+            len += z;
         }
 
-        /* Decrypt the buffer */
-        for (size_t i = 0; i < CHUNK_SIZE; i++)
-            buf[i] ^= pad[i];
+        /* Decrypt the chunk length */
+        size_t msglen;
+        ctr = fill(pad, BLOWFISH_BLOCK_LENGTH, ctr, crypt);
+        msglen  = (uint16_t)(chunk[BLOWFISH_BLOCK_LENGTH + 0] ^ pad[0]) << 8;
+        msglen |= (uint16_t)(chunk[BLOWFISH_BLOCK_LENGTH + 1] ^ pad[1]) << 0;
+        if (msglen > CHUNK_SIZE - BLOWFISH_BLOCK_LENGTH)
+            DIE("ciphertext is corrupt");
 
-        ssize_t w = write(out, buf, z);
+        /* Read remainder of chunk */
+        size_t blocklen = BLOWFISH_BLOCK_LENGTH;
+        size_t nblocks = (msglen + blocklen - 1) / blocklen;
+        ssize_t remainder = (nblocks * blocklen) - len - blocklen;
+        if (remainder > 0) {
+            ssize_t z = full_read(in, chunk + len, remainder);
+            if (z < 0)
+                DIE_ERRNO("reading ciphertext");
+            if (z != remainder)
+                DIE("premature end of ciphertext");
+        }
+
+        /* Check the MAC */
+        for (size_t i = 0; i < nblocks; i++) {
+            for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
+                cbcmac[j] ^= chunk[(i + 1) * BLOWFISH_BLOCK_LENGTH + j];
+            blowfish_encrypt(mac, cbcmac, cbcmac, BLOWFISH_BLOCK_LENGTH);
+        }
+        if (mac_check(cbcmac, chunk))
+            DIE("ciphertext is currupt");
+
+        /* Decrypt validated ciphertext */
+        ctr = fill(pad + blocklen, (nblocks - 1) * blocklen, ctr, crypt);
+        for (size_t i = 0; i < nblocks * BLOWFISH_BLOCK_LENGTH; i++)
+            chunk[BLOWFISH_BLOCK_LENGTH + i] ^= pad[i];
+
+        /* Write out decrypted ciphertext */
+        ssize_t w = write(out, chunk + headerlen, msglen - 2);
         if (w < 0)
             DIE_ERRNO("writing plaintext");
-        if (w != z)
+        if (w != msglen - 2)
             DIE("failed to write plaintext");
-        if (z < CHUNK_SIZE)
+
+        /* Move unprocessed bytes to beginning */
+        size_t discard = (nblocks + 1) * BLOWFISH_BLOCK_LENGTH;
+        memmove(chunk, chunk + discard, len - discard);
+        len -= discard;
+
+        if (msglen == 2)
             break;
     }
-
-    /* Use integers to (hopefully) get constant-time comparison */
-    uint64_t a, b;
-    memcpy(&a, chain, BLOWFISH_BLOCK_LENGTH);
-    memcpy(&b, tail, BLOWFISH_BLOCK_LENGTH);
-    if (a != b)
-        DIE("ciphertext file is damaged");
 }
 
 static void
