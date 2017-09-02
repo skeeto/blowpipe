@@ -42,6 +42,7 @@
  *   -E       encrypt standard input to standard output
  *   -c cost  set the bcrypt cost (encryption only)
  *   -k file  read key material from given file
+ *   -w       wait for full chunks and don't flush early
  *
  * ## File format
  *
@@ -233,15 +234,36 @@ fill(void *buf, size_t len, uint64_t ctr, struct blowfish *ctx)
 }
 
 static void
-encrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
+encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
 {
+    int eof = 0;
     uint64_t ctr = 0;
     static uint8_t chunk[CHUNK_SIZE];
 
     memset(chunk, 0, BLOWFISH_BLOCK_LENGTH);
     for (;;) {
         int headerlen = BLOWFISH_BLOCK_LENGTH + 2;
-        ssize_t z = read(in, chunk + headerlen, CHUNK_SIZE - headerlen);
+
+        ssize_t z;
+        if (wait) {
+            /* Read as much input as possible, but don't ever read()
+             * again after getting 0 bytes on a read().
+             */
+            size_t avail = CHUNK_SIZE - headerlen;
+            z = 0;
+            while (!eof && avail) {
+                ssize_t r = read(STDIN_FILENO, chunk + headerlen + z, avail);
+                if (r < 0)
+                    break;
+                if (r == 0)
+                    eof = 1;
+                z += r;
+                avail -= z;
+            }
+        } else {
+            /* Read just the available data */
+            z = read(STDIN_FILENO, chunk + headerlen, CHUNK_SIZE - headerlen);
+        }
         if (z < 0)
             DIE_ERRNO("reading plaintext");
 
@@ -271,7 +293,7 @@ encrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
 
         /* Write encrypted chunk */
         size_t len = (nblocks + 1) * BLOWFISH_BLOCK_LENGTH;
-        ssize_t w = write(out, chunk, len);
+        ssize_t w = write(STDOUT_FILENO, chunk, len);
         if (w < 0)
             DIE_ERRNO("reading ciphertext");
         if (w != len)
@@ -294,7 +316,7 @@ mac_check(uint8_t *mac0, uint8_t *mac1)
 }
 
 static void
-decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
+decrypt(struct blowfish *crypt, struct blowfish *mac)
 {
     size_t len = 0;
     uint64_t ctr = 0;
@@ -307,7 +329,7 @@ decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
 
         /* Read in at least the header */
         while (len < headerlen) {
-            ssize_t z = read(in, chunk + len, CHUNK_SIZE - len);
+            ssize_t z = read(STDIN_FILENO, chunk + len, CHUNK_SIZE - len);
             if (z < 0)
                 DIE_ERRNO("reading ciphertext");
             if (z == 0)
@@ -328,7 +350,7 @@ decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
         size_t nblocks = (msglen + blocklen - 1) / blocklen;
         ssize_t remainder = (nblocks * blocklen) - len - blocklen;
         if (remainder > 0) {
-            ssize_t z = full_read(in, chunk + len, remainder);
+            ssize_t z = full_read(STDIN_FILENO, chunk + len, remainder);
             if (z < 0)
                 DIE_ERRNO("reading ciphertext");
             if (z != remainder)
@@ -350,7 +372,7 @@ decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
             chunk[BLOWFISH_BLOCK_LENGTH + i] ^= pad[i];
 
         /* Write out decrypted ciphertext */
-        ssize_t w = write(out, chunk + headerlen, msglen - 2);
+        ssize_t w = write(STDOUT_FILENO, chunk + headerlen, msglen - 2);
         if (w < 0)
             DIE_ERRNO("writing plaintext");
         if (w != msglen - 2)
@@ -369,7 +391,7 @@ decrypt(int in, int out, struct blowfish *crypt, struct blowfish *mac)
 static void
 usage(FILE *o)
 {
-    fprintf(o, "usage: example [-D|-E] [-c cost] [-k file]\n");
+    fprintf(o, "usage: example [-D|-E] [-c cost] [-k file] [-w]\n");
 }
 
 int
@@ -378,10 +400,11 @@ main(int argc, char **argv)
     /* Options */
     const char *keyfile = 0;
     int cost = -1;
+    int wait = 0;
     enum {MODE_ENCRYPT = 1, MODE_DECRYPT} mode = 0;
 
     int option;
-    while ((option = getopt(argc, argv, "DEc:hk:")) != -1) {
+    while ((option = getopt(argc, argv, "DEc:hk:w")) != -1) {
         switch (option) {
             case 'E':
                 mode = MODE_ENCRYPT;
@@ -401,6 +424,9 @@ main(int argc, char **argv)
             case 'k':
                 keyfile = optarg;
                 break;
+            case 'w':
+                wait = 1;
+                break;
             default:
                 exit(EXIT_FAILURE);
         }
@@ -409,6 +435,8 @@ main(int argc, char **argv)
     /* Check for invalid option combinations */
     if (mode == MODE_DECRYPT && cost != -1)
         DIE("cost option (-c) is only for encryption (-E)");
+    if (mode == MODE_DECRYPT && wait)
+        DIE("wait option (-w) is only for encryption (-E)");
 
     char iv[IV_LENGTH + 1];
     struct blowfish crypt[1];
@@ -465,10 +493,10 @@ main(int argc, char **argv)
                 DIE_ERRNO("writing ciphertext");
             if (z < IV_LENGTH + 1)
                 DIE("failed to write ciphertext");
-            encrypt(STDIN_FILENO, STDOUT_FILENO, crypt, mac);
+            encrypt(crypt, mac, wait);
             break;
         case MODE_DECRYPT:
-            decrypt(STDIN_FILENO, STDOUT_FILENO, crypt, mac);
+            decrypt(crypt, mac);
             break;
     }
 }
