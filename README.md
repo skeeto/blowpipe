@@ -28,10 +28,13 @@ entirely stream oriented, processing standard input to standard output.
     $ blowpipe -E < data.gz > data.gz.enc
     $ blowpipe -D < data.gz.enc | gunzip > data.txt
 
-Or with a key file:
+Or to securely transfer a file over a network using a shared key file:
 
-    $ blowpipe -E -k keyfile < data.zip > data.zip.enc
-    $ blowpipe -D -k keyfile > data.zip < data.zip.enc
+    # receiver
+    $ nc -lp 2000 | blowpipe -D -k keyfile > data.zip || rm -f data.zip
+
+    # sender
+    $ blowpipe -E -k keyfile < data.zip | nc -N hostname 2000
 
 On decryption, the tool *only* produces authenticated output. However,
 the overall output could still be truncated should something go wrong in
