@@ -2,24 +2,24 @@
 CC     = cc -std=c99
 CFLAGS = -Wall -Wextra -O3
 
-all: test blowcrypt
+all: test blowpipe
 
 test: test.c blowfish.c blowfish.h vectors2.h
 	$(CC) $(LDFLAGS) -o $@ test.c blowfish.c
 
-blowcrypt: blowcrypt.c blowfish.c blowfish.h
-	$(CC) $(LDFLAGS) -o $@ blowcrypt.c blowfish.c
+blowpipe: blowpipe.c blowfish.c blowfish.h
+	$(CC) $(LDFLAGS) -o $@ blowpipe.c blowfish.c
 
 key.dat:
 	printf "helloworld" > $@
 
-check: test blowcrypt key.dat
+check: test blowpipe key.dat
 	./test
 	for len in $$(seq 0 10) $$(seq 65500 65600); do \
 	    head -c$$len /dev/urandom | \
-	        ./blowcrypt -E -c3 -kkey.dat | \
-	        ./blowcrypt -D     -kkey.dat > /dev/null; \
+	        ./blowpipe -E -c3 -kkey.dat | \
+	        ./blowpipe -D     -kkey.dat > /dev/null; \
 	done
 
 clean:
-	rm -f test blowcrypt key.dat
+	rm -f test blowpipe key.dat
