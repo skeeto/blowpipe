@@ -12,7 +12,7 @@ void blowfish_bcrypt(void *digest, const void *pwd, int len, const void *salt, i
 
 See `blowfish.h` for complete API documentation.
 
-## Blowpipe: authenticated Blowfish encrypted pipe
+## Blowpipe: authenticated Blowfish-encrypted pipe
 
 A *toy* symmetric, authenticated pipe encryption tool called `blowpipe`
 demonstrates the associated Blowfish library. Every cryptographic
