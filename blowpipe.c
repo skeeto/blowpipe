@@ -191,7 +191,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
                 if (r == 0)
                     eof = 1;
                 z += r;
-                avail -= z;
+                avail -= r;
             }
         } else {
             /* Read just the available data */
