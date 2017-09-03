@@ -94,11 +94,13 @@ passphrase_prompt(const char *prompt, char *buf)
     int result = 0;
     if (z < 0)
         DIE_ERRNO("/dev/tty");
-    if (z == 0 || buf[0] == '\n')
+    if (z == 0 || buf[0] == '\n' || buf[0] == '\r')
         fputs("passphrase too short (must 1 to 72 bytes)\n", stderr);
     else if (z > BLOWFISH_MAX_KEY_LENGTH && buf[z] != '\n')
         fputs("passphrase too long (must 1 to 72 bytes)\n", stderr);
     else {
+        if (z >= 2 && buf[z - 2] == '\r')
+            buf[z - 2] = 0;
         buf[z - 1] = 0;
         result = 1;
     }
