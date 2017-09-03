@@ -79,7 +79,7 @@ passphrase_prompt(const char *prompt, char *buf)
     if (tty == -1)
         DIE_ERRNO("/dev/tty");
 
-    if (write(tty, prompt, strlen(prompt)) != strlen(prompt))
+    if (write(tty, prompt, strlen(prompt)) != (ssize_t)strlen(prompt))
         DIE_ERRNO("/dev/tty");
 
     struct termios old, new;
@@ -225,7 +225,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
         }
 
         /* Write encrypted chunk */
-        size_t len = msglen + BLOWFISH_BLOCK_LENGTH;
+        ssize_t len = msglen + BLOWFISH_BLOCK_LENGTH;
         ssize_t w = write(STDOUT_FILENO, chunk, len);
         if (w < 0)
             DIE_ERRNO("reading ciphertext");
@@ -258,7 +258,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
     uint8_t cbcmac[BLOWFISH_BLOCK_LENGTH] = {0};
 
     for (;;) {
-        int headerlen = BLOWFISH_BLOCK_LENGTH + 2;
+        size_t headerlen = BLOWFISH_BLOCK_LENGTH + 2;
 
         /* Read in at least the header */
         while (len < headerlen) {
@@ -320,7 +320,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         ssize_t w = write(STDOUT_FILENO, chunk + headerlen, msglen - 2);
         if (w < 0)
             DIE_ERRNO("writing plaintext");
-        if (w != msglen - 2)
+        if ((size_t)w != msglen - 2)
             DIE("failed to write plaintext");
 
         /* Move unprocessed bytes to beginning */
