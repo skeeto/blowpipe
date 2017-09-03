@@ -205,7 +205,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
         size_t msglen = z + 2;
         size_t nblocks = (msglen + blocklen - 1) / blocklen;
         size_t padding = nblocks * blocklen - msglen;
-        memset(chunk + BLOWFISH_BLOCK_LENGTH + msglen + z, 0, padding);
+        memset(chunk + BLOWFISH_BLOCK_LENGTH + msglen, 0, padding);
 
         /* Write chunk length to chunk header */
         chunk[BLOWFISH_BLOCK_LENGTH + 0] = msglen >> 8;
@@ -225,7 +225,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
         }
 
         /* Write encrypted chunk */
-        size_t len = (nblocks + 1) * BLOWFISH_BLOCK_LENGTH;
+        size_t len = msglen + BLOWFISH_BLOCK_LENGTH;
         ssize_t w = write(STDOUT_FILENO, chunk, len);
         if (w < 0)
             DIE_ERRNO("reading ciphertext");
@@ -281,7 +281,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         /* Read remainder of chunk */
         size_t blocklen = BLOWFISH_BLOCK_LENGTH;
         size_t nblocks = (msglen + blocklen - 1) / blocklen;
-        ssize_t remainder = (nblocks * blocklen) - len - blocklen;
+        ssize_t remainder = msglen - len - blocklen;
         if (remainder > 0) {
             ssize_t z = full_read(STDIN_FILENO, chunk + len, remainder);
             if (z < 0)
@@ -291,17 +291,29 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         }
 
         /* Check the MAC */
-        for (size_t i = 0; i < nblocks; i++) {
+        ctr = fill(pad + blocklen, (nblocks - 1) * blocklen, ctr, crypt);
+        for (size_t i = 0; i < nblocks - 1; i++) {
             for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
                 cbcmac[j] ^= chunk[(i + 1) * BLOWFISH_BLOCK_LENGTH + j];
             blowfish_encrypt(mac, cbcmac, cbcmac, BLOWFISH_BLOCK_LENGTH);
         }
+
+        /* Add padding to last block before MAC check */
+        uint8_t tmp[BLOWFISH_BLOCK_LENGTH];
+        int tail = msglen % BLOWFISH_BLOCK_LENGTH;
+        int padlen = (nblocks * BLOWFISH_BLOCK_LENGTH) - msglen;
+        void *last = chunk + nblocks * BLOWFISH_BLOCK_LENGTH;
+        memcpy(tmp, last, BLOWFISH_BLOCK_LENGTH);
+        void *lpad = pad + tail + (nblocks - 1) * BLOWFISH_BLOCK_LENGTH;
+        memcpy(tmp + tail, lpad, padlen);
+        for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
+            cbcmac[j] ^= tmp[j];
+        blowfish_encrypt(mac, cbcmac, cbcmac, BLOWFISH_BLOCK_LENGTH);
         if (mac_check(cbcmac, chunk))
             DIE("ciphertext is corrupt");
 
         /* Decrypt validated ciphertext */
-        ctr = fill(pad + blocklen, (nblocks - 1) * blocklen, ctr, crypt);
-        for (size_t i = 0; i < nblocks * BLOWFISH_BLOCK_LENGTH; i++)
+        for (size_t i = 0; i < msglen; i++)
             chunk[BLOWFISH_BLOCK_LENGTH + i] ^= pad[i];
 
         /* Write out decrypted ciphertext */
@@ -312,7 +324,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
             DIE("failed to write plaintext");
 
         /* Move unprocessed bytes to beginning */
-        size_t discard = (nblocks + 1) * BLOWFISH_BLOCK_LENGTH;
+        size_t discard = msglen + BLOWFISH_BLOCK_LENGTH;
         memmove(chunk, chunk + discard, len - discard);
         len -= discard;
 

@@ -73,7 +73,7 @@ The chunk format:
 
 * 8 byte MAC for this chunk (continued from previous chunk)
 * 2 byte big endian message length, encrypted and authenticated (`msglen`)
-* `round_up_to_block(msglen) - 2` bytes of encrypted data
+* `msglen - 2` bytes of encrypted data
 
 The last block's plaintext is zero padded. The last chunk will have a
 `msglen` of 2, making it an empty chunk. Since this chunk is
