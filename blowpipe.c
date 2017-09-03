@@ -312,6 +312,10 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         if (mac_check(cbcmac, chunk))
             DIE("ciphertext is corrupt");
 
+        /* Quit after the empty chunk has been authenticated */
+        if (msglen == 2)
+            break;
+
         /* Decrypt validated ciphertext */
         for (size_t i = 0; i < msglen; i++)
             chunk[BLOWFISH_BLOCK_LENGTH + i] ^= pad[i];
@@ -327,9 +331,6 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         size_t discard = msglen + BLOWFISH_BLOCK_LENGTH;
         memmove(chunk, chunk + discard, len - discard);
         len -= discard;
-
-        if (msglen == 2)
-            break;
     }
 }
 
