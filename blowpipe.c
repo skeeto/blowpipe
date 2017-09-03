@@ -5,11 +5,16 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef _WIN32
+#include "w32-compat/unistd.h"
+#include "w32-compat/getopt.h"
+#else
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <unistd.h>
 #include <termios.h>
+#endif
 
 #include "blowfish.h"
 
