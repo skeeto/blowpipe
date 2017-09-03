@@ -1,7 +1,4 @@
-/* Blowpipe --- authenticated Blowfish-encrypted pipe
- *
- */
-
+/* Blowpipe --- authenticated Blowfish-encrypted pipe */
 #define _POSIX_SOURCE 1
 #include <stdio.h>
 #include <assert.h>
