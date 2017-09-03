@@ -297,7 +297,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
             blowfish_encrypt(mac, cbcmac, cbcmac, BLOWFISH_BLOCK_LENGTH);
         }
         if (mac_check(cbcmac, chunk))
-            DIE("ciphertext is currupt");
+            DIE("ciphertext is corrupt");
 
         /* Decrypt validated ciphertext */
         ctr = fill(pad + blocklen, (nblocks - 1) * blocklen, ctr, crypt);
