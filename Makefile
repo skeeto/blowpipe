@@ -1,14 +1,14 @@
 .POSIX:
 CC     = cc -std=c99
-CFLAGS = -Wall -Wextra -O3
+CFLAGS = -Wall -Wextra -O3 -g3
 
 all: test blowpipe
 
 test: test.c blowfish.c blowfish.h vectors2.h
-	$(CC) $(LDFLAGS) -o $@ test.c blowfish.c
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ test.c blowfish.c
 
 blowpipe: blowpipe.c blowfish.c blowfish.h
-	$(CC) $(LDFLAGS) -o $@ blowpipe.c blowfish.c
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ blowpipe.c blowfish.c
 
 key.dat:
 	printf "helloworld" > $@
