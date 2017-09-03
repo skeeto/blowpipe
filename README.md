@@ -53,9 +53,9 @@ more secure than the other "bcrypt" file encryption tool.
     -k file  read key material from given file
     -w       wait for full chunks and don't flush early
 
-## File format
+## Wire format
 
-The overall file format:
+The overall wire format:
 
 * 16-byte random initialization vector (IV)
 * 1-byte bcrypt cost: last IV byte + cost, modulo 256
@@ -66,7 +66,7 @@ up to 64kB in size, each with its own MAC. A special zero-length chunk
 marks the end of the stream, and any data following this chunk is
 ignored.
 
-The format chunks:
+The chunk format:
 
 * 8 byte MAC for this chunk (continued from previous chunk)
 * 2 byte big endian message length, encrypted and authenticated (`msglen`)
