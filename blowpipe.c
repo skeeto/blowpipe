@@ -195,7 +195,8 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
             }
         } else {
             /* Read just the available data */
-            z = read(STDIN_FILENO, chunk + headerlen, CHUNK_SIZE - headerlen);
+            size_t avail = CHUNK_SIZE - headerlen;
+            z = read(STDIN_FILENO, chunk + headerlen, avail);
         }
         if (z < 0)
             DIE_ERRNO("reading plaintext");
@@ -281,13 +282,14 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         /* Read remainder of chunk */
         size_t blocklen = BLOWFISH_BLOCK_LENGTH;
         size_t nblocks = (msglen + blocklen - 1) / blocklen;
-        ssize_t remainder = msglen - len - blocklen;
+        ssize_t remainder = msglen - len + blocklen;
         if (remainder > 0) {
             ssize_t z = full_read(STDIN_FILENO, chunk + len, remainder);
             if (z < 0)
                 DIE_ERRNO("reading ciphertext");
             if (z != remainder)
                 DIE("premature end of ciphertext");
+            len += z;
         }
 
         /* Check the MAC */
