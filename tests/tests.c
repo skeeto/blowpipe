@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include "vectors2.h"
-#include "blowfish.h"
+#include "../blowfish.h"
 
 #define NUM_BCRYPT_VECTORS (sizeof(bcrypt_vectors)/sizeof(*bcrypt_vectors)/2)
 static const char bcrypt_vectors[][64] = {
