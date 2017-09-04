@@ -18,10 +18,11 @@
 
 #include "blowfish.h"
 
-#define IV_LENGTH       16
-#define CHUNK_SIZE      (1UL << 16)
-#define PASSPHRASE_COST 14
-#define KEYFILE_COST    0
+#define IV_LENGTH          16
+#define CHUNK_SIZE         (1UL << 16)
+#define PASSPHRASE_COST    14
+#define KEYFILE_COST       0
+#define MAXIMUM_INPUT_COST 16
 
 #define DIE(s) \
     do { \
@@ -385,8 +386,6 @@ main(int argc, char **argv)
     }
 
     /* Check for invalid option combinations */
-    if (mode == MODE_DECRYPT && cost != -1)
-        DIE("cost option (-c) is only for encryption (-E)");
     if (mode == MODE_DECRYPT && wait)
         DIE("wait option (-w) is only for encryption (-E)");
 
@@ -396,20 +395,26 @@ main(int argc, char **argv)
 
     /* Get the IV before asking for a password, in case it fails */
     switch (mode) {
-        case MODE_ENCRYPT:
+        case MODE_ENCRYPT: {
             gen_iv(iv);
-            break;
-        case MODE_DECRYPT:
+        } break;
+        case MODE_DECRYPT: {
             read_iv(STDIN_FILENO, iv);
-            cost = iv[IV_LENGTH] + 256;
-            cost = (cost - iv[IV_LENGTH - 1]) % 256;
-            if (cost > BLOWFISH_MAX_COST)
+            int in_cost = iv[IV_LENGTH] + 256;
+            in_cost = (in_cost - iv[IV_LENGTH - 1]) % 256;
+            if (in_cost > BLOWFISH_MAX_COST)
                 DIE("ciphertext is damaged");
-            break;
-        default:
+            if (cost == -1)
+                cost = MAXIMUM_INPUT_COST;
+            if (in_cost > cost)
+                DIE("bcrypt cost exceeds maximum (use -c to adjust)");
+            cost = in_cost;
+        } break;
+        default: {
             fputs("must select encrypt (-E) or decrypt (-D)\n", stderr);
             usage(stderr);
             exit(EXIT_FAILURE);
+        }
     }
 
     /* Derive the key */

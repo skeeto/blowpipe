@@ -50,7 +50,8 @@ upon a stronger, newer cipher (AES).
 
     -D       decrypt standard input to standard output
     -E       encrypt standard input to standard output
-    -c cost  set the bcrypt cost (encryption only)
+    -c cost  (encrypt) set the bcrypt cost
+             (decrypt) set the maximum permitted bcrypt cost
     -k file  read key material from given file
     -w       wait for full chunks and don't flush early
 
