@@ -72,6 +72,9 @@ read(int fd, void *buf, size_t len)
             DWORD actual;
             BOOL r = ReadFile(in, buf, len, &actual, 0);
             if (!r) {
+                DWORD error = GetLastError();
+                if (error == ERROR_BROKEN_PIPE)
+                    return 0; // actually an EOF
                 errno = EIO;
                 return -1;
             }
