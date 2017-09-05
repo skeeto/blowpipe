@@ -68,7 +68,20 @@ read(int fd, void *buf, size_t len)
 {
     switch (fd) {
         case STDIN_FILENO: {
-            HANDLE in = GetStdHandle(STD_INPUT_HANDLE);
+            static HANDLE in = INVALID_HANDLE_VALUE;
+            static BOOL isconsole;
+            if (in == INVALID_HANDLE_VALUE) {
+                in = GetStdHandle(STD_INPUT_HANDLE);
+                DWORD mode;
+                isconsole = GetConsoleMode(in, &mode);
+            }
+            if (len > 0x77e8 && isconsole) {
+                /* Undocumented behavior: Console reads are limited to 30696
+                 * bytes. Larger reads trigger ERROR_NOT_ENOUGH_MEMORY.
+                 * Y U do dis, Microsoft?
+                 */
+                len = 0x77e8;
+            }
             DWORD actual;
             BOOL r = ReadFile(in, buf, len, &actual, 0);
             if (!r) {
