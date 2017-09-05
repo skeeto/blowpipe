@@ -1,4 +1,7 @@
-/* POSIX compatability layer for blowpipe.h */
+/* POSIX compatability layer for Blowpipe
+ *
+ * Only the tiny, tiny subset of POSIX needed by Blowpipe is implemented.
+ */
 #ifndef W32_COMPAT_H
 #define W32_COMPAT_H
 
