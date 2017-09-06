@@ -20,7 +20,7 @@
 
 #define IV_LENGTH          16
 #define CHUNK_SIZE         (1UL << 16)
-#define PASSPHRASE_COST    14
+#define PASSPHRASE_COST    15
 #define KEYFILE_COST       0
 #define MAXIMUM_INPUT_COST 16
 
