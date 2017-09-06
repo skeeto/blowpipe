@@ -4,7 +4,7 @@ CFLAGS = -Wall -Wextra -O3 -g3
 
 all: blowpipe
 
-blowpipe: blowpipe.c blowfish.c blowfish.h
+blowpipe: blowpipe.c blowfish.c blowfish.h w32-compat/unistd.h
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ blowpipe.c blowfish.c
 
 tests/tests: tests/tests.c blowfish.c blowfish.h tests/vectors2.h
