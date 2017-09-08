@@ -165,20 +165,6 @@ decode_u32be(const void *buf)
            ((uint32_t)p[3] <<  0);
 }
 
-static uint64_t
-fill(void *buf, size_t n, uint64_t ctr, struct blowfish *ctx)
-{
-    uint8_t *p = buf;
-    for (size_t i = 0; i < n; i++, ctr++) {
-        uint32_t xl = ctr >> 32;
-        uint32_t xr = ctr >>  0;
-        blowfish_encrypt(ctx, &xl, &xr);
-        encode_u32be(p + (i * BLOWFISH_BLOCK_LENGTH) + 0, xl);
-        encode_u32be(p + (i * BLOWFISH_BLOCK_LENGTH) + 4, xr);
-    }
-    return ctr;
-}
-
 static void
 encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
 {
@@ -227,17 +213,25 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
         chunk[BLOWFISH_BLOCK_LENGTH + 1] = msglen >> 0;
 
         /* Encrypt the buffer */
-        static uint8_t pad[CHUNK_SIZE];
-        ctr = fill(pad, nblocks, ctr, crypt);
-        for (size_t i = 0; i < nblocks * BLOWFISH_BLOCK_LENGTH; i++)
-            chunk[i + BLOWFISH_BLOCK_LENGTH] ^= pad[i];
-
-        /* Compute MAC */
         for (size_t i = 0; i < nblocks; i++) {
+            /* Compute CTR mode pad */
+            uint32_t xl = ctr >> 32;
+            uint32_t xr = ctr++;
+            blowfish_encrypt(crypt, &xl, &xr);
+
+            /* XOR plaintext with the pad */
             size_t off = (i + 1) * BLOWFISH_BLOCK_LENGTH;
-            macl ^= decode_u32be(chunk + off + 0);
-            macr ^= decode_u32be(chunk + off + 4);
+            xl ^= decode_u32be(chunk + off + 0);
+            xr ^= decode_u32be(chunk + off + 4);
+
+            /* Compute the MAC */
+            macl ^= xl;
+            macr ^= xr;
             blowfish_encrypt(mac, &macl, &macr);
+
+            /* Put ciphertext back into the buffer */
+            encode_u32be(chunk + off + 0, xl);
+            encode_u32be(chunk + off + 4, xr);
         }
         encode_u32be(chunk + 0, macl);
         encode_u32be(chunk + 4, macr);
@@ -263,7 +257,6 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
     uint64_t ctr = 0;
     uint32_t macl = 0;
     uint32_t macr = 0;
-    static uint8_t pad[CHUNK_SIZE];
     static uint8_t chunk[CHUNK_SIZE];
 
     for (;;) {
@@ -278,11 +271,17 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
             len += z;
         }
 
+        /* Compute the first 8 bytes of the pad */
+        uint8_t pad[BLOWFISH_BLOCK_LENGTH];
+        uint32_t padl = ctr >> 32;
+        uint32_t padr = ctr;  // don't increment counter yet
+        blowfish_encrypt(crypt, &padl, &padr);
+        encode_u32be(pad + 0, padl);
+        encode_u32be(pad + 4, padr);
+
         /* Decrypt the chunk length */
-        size_t msglen;
-        ctr = fill(pad, 1, ctr, crypt);
-        msglen  = (uint16_t)(chunk[BLOWFISH_BLOCK_LENGTH + 0] ^ pad[0]) << 8;
-        msglen |= (uint16_t)(chunk[BLOWFISH_BLOCK_LENGTH + 1] ^ pad[1]) << 0;
+        uint8_t *lenptr = chunk + BLOWFISH_BLOCK_LENGTH;
+        size_t msglen = ((lenptr[0] ^ pad[0]) << 8) | (lenptr[1] ^ pad[1]);
         if (msglen > CHUNK_SIZE - BLOWFISH_BLOCK_LENGTH)
             DIE("ciphertext is corrupt");
 
@@ -299,26 +298,43 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
             len += z;
         }
 
-        /* Compute the MAC */
-        ctr = fill(pad + BLOWFISH_BLOCK_LENGTH, nblocks - 1, ctr, crypt);
-        for (size_t i = 0; i < nblocks - 1; i++) {
+        /* Decrypt the buffer */
+        for (size_t i = 0; i < nblocks; i++) {
+            uint32_t pl = ctr >> 32;
+            uint32_t pr = ctr++;
+            blowfish_encrypt(crypt, &pl, &pr);
+
+            /* Extract ciphertext */
+            uint32_t cl, cr;
             size_t off = (i + 1) * BLOWFISH_BLOCK_LENGTH;
-            macl ^= decode_u32be(chunk + off + 0);
-            macr ^= decode_u32be(chunk + off + 4);
+            if ((i + 1) * BLOWFISH_BLOCK_LENGTH > msglen) {
+                /* Handle the final partial block in a temporary buffer
+                 * in order to pad it. The chunk buffer might have bytes
+                 * belonging to the next chunk immediately after this
+                 * partial block, so that space isn't available.
+                 */
+                uint8_t tmp[BLOWFISH_BLOCK_LENGTH];
+                int padding = (i + 1) * BLOWFISH_BLOCK_LENGTH - msglen;
+                encode_u32be(tmp + 0, pl);
+                encode_u32be(tmp + 4, pr);
+                memcpy(tmp, chunk + off, 8 - padding);
+                cl = decode_u32be(tmp + 0);
+                cr = decode_u32be(tmp + 4);
+                encode_u32be(tmp + 0, pl ^ cl);
+                encode_u32be(tmp + 4, pr ^ cr);
+                memcpy(chunk + off, tmp, 8 - padding);
+            } else {
+                cl = decode_u32be(chunk + off + 0);
+                cr = decode_u32be(chunk + off + 4);
+                encode_u32be(chunk + off + 0, pl ^ cl);
+                encode_u32be(chunk + off + 4, pr ^ cr);
+            }
+
+            /* Compute MAC */
+            macl ^= cl;
+            macr ^= cr;
             blowfish_encrypt(mac, &macl, &macr);
         }
-
-        /* Add padding to last block before MAC check */
-        uint8_t tmp[BLOWFISH_BLOCK_LENGTH];
-        int tail = msglen % BLOWFISH_BLOCK_LENGTH;
-        int padlen = (nblocks * BLOWFISH_BLOCK_LENGTH) - msglen;
-        void *last = chunk + nblocks * BLOWFISH_BLOCK_LENGTH;
-        memcpy(tmp, last, BLOWFISH_BLOCK_LENGTH);
-        void *lpad = pad + tail + (nblocks - 1) * BLOWFISH_BLOCK_LENGTH;
-        memcpy(tmp + tail, lpad, padlen);
-        macl ^= decode_u32be(tmp + 0);
-        macr ^= decode_u32be(tmp + 4);
-        blowfish_encrypt(mac, &macl, &macr);
 
         /* Check the MAC */
         uint32_t cl = decode_u32be(chunk + 0);
@@ -329,10 +345,6 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         /* Quit after the empty chunk has been authenticated */
         if (msglen == 2)
             break;
-
-        /* Decrypt validated ciphertext */
-        for (size_t i = 0; i < msglen; i++)
-            chunk[BLOWFISH_BLOCK_LENGTH + i] ^= pad[i];
 
         /* Write out decrypted ciphertext */
         ssize_t w = write(STDOUT_FILENO, chunk + headerlen, msglen - 2);

@@ -24,6 +24,8 @@ Or to securely transfer a file over a network:
     # sender
     $ blowpipe -E -k keyfile < data.zip | nc -N hostname 2000
 
+On a modern desktop, Blowpipe has a throughput of about 75 MB/s.
+
 ![][img]
 
 On decryption, the tool *only* produces authenticated output. However,
