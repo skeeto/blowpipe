@@ -146,28 +146,36 @@ key_read(int fd, void *key, const void *iv, int cost)
 }
 
 static void
-spill(void *buf, uint64_t c)
+encode_u32be(void *buf, uint32_t c)
 {
     uint8_t *p = buf;
-    p[0] = (uint8_t)(c >>  0);
-    p[1] = (uint8_t)(c >>  8);
-    p[2] = (uint8_t)(c >> 16);
-    p[3] = (uint8_t)(c >> 24);
-    p[4] = (uint8_t)(c >> 32);
-    p[5] = (uint8_t)(c >> 40);
-    p[6] = (uint8_t)(c >> 48);
-    p[7] = (uint8_t)(c >> 56);
+    p[0] = (uint8_t)(c >> 24);
+    p[1] = (uint8_t)(c >> 16);
+    p[2] = (uint8_t)(c >>  8);
+    p[3] = (uint8_t)(c >>  0);
+}
+
+static uint32_t
+decode_u32be(const void *buf)
+{
+    const uint8_t *p = buf;
+    return ((uint32_t)p[0] << 24) |
+           ((uint32_t)p[1] << 16) |
+           ((uint32_t)p[2] <<  8) |
+           ((uint32_t)p[3] <<  0);
 }
 
 static uint64_t
-fill(void *buf, size_t len, uint64_t ctr, struct blowfish *ctx)
+fill(void *buf, size_t n, uint64_t ctr, struct blowfish *ctx)
 {
-    assert(len % 8 == 0);
-
     uint8_t *p = buf;
-    for (size_t n = 0; n < len; n += 8)
-        spill(p + n, ctr++);
-    blowfish_encrypt(ctx, buf, buf, len);
+    for (size_t i = 0; i < n; i++, ctr++) {
+        uint32_t xl = ctr >> 32;
+        uint32_t xr = ctr >>  0;
+        blowfish_encrypt(ctx, &xl, &xr);
+        encode_u32be(p + (i * BLOWFISH_BLOCK_LENGTH) + 0, xl);
+        encode_u32be(p + (i * BLOWFISH_BLOCK_LENGTH) + 4, xr);
+    }
     return ctr;
 }
 
@@ -176,13 +184,14 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
 {
     int eof = 0;
     uint64_t ctr = 0;
+    uint32_t macl = 0;
+    uint32_t macr = 0;
     static uint8_t chunk[CHUNK_SIZE];
 
     memset(chunk, 0, BLOWFISH_BLOCK_LENGTH);
     for (;;) {
-        int headerlen = BLOWFISH_BLOCK_LENGTH + 2;
-
         ssize_t z;
+        int headerlen = BLOWFISH_BLOCK_LENGTH + 2;
         if (wait) {
             /* Read as much input as possible, but don't ever read()
              * again after getting 0 bytes on a read().
@@ -219,16 +228,19 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
 
         /* Encrypt the buffer */
         static uint8_t pad[CHUNK_SIZE];
-        ctr = fill(pad, nblocks * BLOWFISH_BLOCK_LENGTH, ctr, crypt);
+        ctr = fill(pad, nblocks, ctr, crypt);
         for (size_t i = 0; i < nblocks * BLOWFISH_BLOCK_LENGTH; i++)
             chunk[i + BLOWFISH_BLOCK_LENGTH] ^= pad[i];
 
         /* Compute MAC */
         for (size_t i = 0; i < nblocks; i++) {
-            for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
-                chunk[j] ^= chunk[(i + 1) * BLOWFISH_BLOCK_LENGTH + j];
-            blowfish_encrypt(mac, chunk, chunk, BLOWFISH_BLOCK_LENGTH);
+            size_t off = (i + 1) * BLOWFISH_BLOCK_LENGTH;
+            macl ^= decode_u32be(chunk + off + 0);
+            macr ^= decode_u32be(chunk + off + 4);
+            blowfish_encrypt(mac, &macl, &macr);
         }
+        encode_u32be(chunk + 0, macl);
+        encode_u32be(chunk + 4, macr);
 
         /* Write encrypted chunk */
         ssize_t len = msglen + BLOWFISH_BLOCK_LENGTH;
@@ -244,29 +256,19 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
 
 }
 
-static uint64_t
-mac_check(uint8_t *mac0, uint8_t *mac1)
-{
-    /* Use integers to (hopefully) get constant-time comparison */
-    uint64_t i0, i1;
-    memcpy(&i0, mac0, BLOWFISH_BLOCK_LENGTH);
-    memcpy(&i1, mac1, BLOWFISH_BLOCK_LENGTH);
-    return i0 ^ i1;
-}
-
 static void
 decrypt(struct blowfish *crypt, struct blowfish *mac)
 {
     size_t len = 0;
     uint64_t ctr = 0;
+    uint32_t macl = 0;
+    uint32_t macr = 0;
     static uint8_t pad[CHUNK_SIZE];
     static uint8_t chunk[CHUNK_SIZE];
-    uint8_t cbcmac[BLOWFISH_BLOCK_LENGTH] = {0};
 
     for (;;) {
-        size_t headerlen = BLOWFISH_BLOCK_LENGTH + 2;
-
         /* Read in at least the header */
+        size_t headerlen = BLOWFISH_BLOCK_LENGTH + 2;
         while (len < headerlen) {
             ssize_t z = read(STDIN_FILENO, chunk + len, CHUNK_SIZE - len);
             if (z < 0)
@@ -278,7 +280,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
 
         /* Decrypt the chunk length */
         size_t msglen;
-        ctr = fill(pad, BLOWFISH_BLOCK_LENGTH, ctr, crypt);
+        ctr = fill(pad, 1, ctr, crypt);
         msglen  = (uint16_t)(chunk[BLOWFISH_BLOCK_LENGTH + 0] ^ pad[0]) << 8;
         msglen |= (uint16_t)(chunk[BLOWFISH_BLOCK_LENGTH + 1] ^ pad[1]) << 0;
         if (msglen > CHUNK_SIZE - BLOWFISH_BLOCK_LENGTH)
@@ -297,12 +299,13 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
             len += z;
         }
 
-        /* Check the MAC */
-        ctr = fill(pad + blocklen, (nblocks - 1) * blocklen, ctr, crypt);
+        /* Compute the MAC */
+        ctr = fill(pad + BLOWFISH_BLOCK_LENGTH, nblocks - 1, ctr, crypt);
         for (size_t i = 0; i < nblocks - 1; i++) {
-            for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
-                cbcmac[j] ^= chunk[(i + 1) * BLOWFISH_BLOCK_LENGTH + j];
-            blowfish_encrypt(mac, cbcmac, cbcmac, BLOWFISH_BLOCK_LENGTH);
+            size_t off = (i + 1) * BLOWFISH_BLOCK_LENGTH;
+            macl ^= decode_u32be(chunk + off + 0);
+            macr ^= decode_u32be(chunk + off + 4);
+            blowfish_encrypt(mac, &macl, &macr);
         }
 
         /* Add padding to last block before MAC check */
@@ -313,10 +316,14 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         memcpy(tmp, last, BLOWFISH_BLOCK_LENGTH);
         void *lpad = pad + tail + (nblocks - 1) * BLOWFISH_BLOCK_LENGTH;
         memcpy(tmp + tail, lpad, padlen);
-        for (int j = 0; j < BLOWFISH_BLOCK_LENGTH; j++)
-            cbcmac[j] ^= tmp[j];
-        blowfish_encrypt(mac, cbcmac, cbcmac, BLOWFISH_BLOCK_LENGTH);
-        if (mac_check(cbcmac, chunk))
+        macl ^= decode_u32be(tmp + 0);
+        macr ^= decode_u32be(tmp + 4);
+        blowfish_encrypt(mac, &macl, &macr);
+
+        /* Check the MAC */
+        uint32_t cl = decode_u32be(chunk + 0);
+        uint32_t cr = decode_u32be(chunk + 4);
+        if (macl != cl || macr != cr)
             DIE("ciphertext is corrupt");
 
         /* Quit after the empty chunk has been authenticated */

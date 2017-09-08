@@ -298,8 +298,8 @@ blowfish_write(uint8_t *p, uint32_t v)
     p[3] = (uint8_t)(v >>  0);
 }
 
-static void
-blowfish_encipher(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
+void
+blowfish_encrypt(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
 {
     uint32_t xl = *bl;
     uint32_t xr = *br;
@@ -315,8 +315,8 @@ blowfish_encipher(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
     *br = xl;
 }
 
-static void
-blowfish_decipher(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
+void
+blowfish_decrypt(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
 {
     uint32_t xl = *bl;
     uint32_t xr = *br;
@@ -330,32 +330,6 @@ blowfish_decipher(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
     xr ^= ctx->p[0];
     *bl = xr;
     *br = xl;
-}
-
-void
-blowfish_encrypt(struct blowfish *ctx, void *dst, const void *src, size_t len)
-{
-    assert(len % BLOWFISH_BLOCK_LENGTH == 0);
-    for (size_t n = 0; n < len; n += 8) {
-        uint32_t bl = blowfish_read((uint8_t *)src + n + 0);
-        uint32_t br = blowfish_read((uint8_t *)src + n + 4);
-        blowfish_encipher(ctx, &bl, &br);
-        blowfish_write((uint8_t *)dst + n + 0, bl);
-        blowfish_write((uint8_t *)dst + n + 4, br);
-    }
-}
-
-void
-blowfish_decrypt(struct blowfish *ctx, void *dst, const void *src, size_t len)
-{
-    assert(len % BLOWFISH_BLOCK_LENGTH == 0);
-    for (size_t n = 0; n < len; n += 8) {
-        uint32_t bl = blowfish_read((uint8_t *)src + n + 0);
-        uint32_t br = blowfish_read((uint8_t *)src + n + 4);
-        blowfish_decipher(ctx, &bl, &br);
-        blowfish_write((uint8_t *)dst + n + 0, bl);
-        blowfish_write((uint8_t *)dst + n + 4, br);
-    }
 }
 
 static void
@@ -384,7 +358,7 @@ blowfish_expand(
     for (int i = 0; i < 18; i += 2) {
         ctext[0] ^= esalt[(i + 0) % 4];
         ctext[1] ^= esalt[(i + 1) % 4];
-        blowfish_encipher(ctx, ctext, ctext + 1);
+        blowfish_encrypt(ctx, ctext, ctext + 1);
         ctx->p[i + 0] = ctext[0];
         ctx->p[i + 1] = ctext[1];
     }
@@ -393,7 +367,7 @@ blowfish_expand(
         for (int j = 0; j < 256; j += 2) {
             ctext[0] ^= esalt[(j + 2) % 4];
             ctext[1] ^= esalt[(j + 3) % 4];
-            blowfish_encipher(ctx, ctext, ctext + 1);
+            blowfish_encrypt(ctx, ctext, ctext + 1);
             ctx->s[i][j + 0] = ctext[0];
             ctx->s[i][j + 1] = ctext[1];
         }
@@ -442,7 +416,7 @@ blowfish_bcrypt(
     };
     for (int i = 0; i < 64; i++)
         for (int j = 0; j < 6; j += 2)
-            blowfish_encipher(ctx, ctext + j, ctext + j + 1);
+            blowfish_encrypt(ctx, ctext + j, ctext + j + 1);
     for (int i = 0; i < 6; i++)
         blowfish_write((uint8_t *)digest + i * 4, ctext[i]);
 }

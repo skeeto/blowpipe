@@ -26,19 +26,13 @@ struct blowfish {
  */
 void blowfish_init(struct blowfish *, const void *key, int len);
 
-/* Encrypt a buffer using the given context.
- *
- * The buffer length must be a multiple of the block size (8). The
- * source and destination can be the same buffer. Blocks are processed
- * in ECB mode.
+/* Encrypt a pair of 32-bit integers using the given context.
  */
-void blowfish_encrypt(struct blowfish *, void *dst, const void *src, size_t);
+void blowfish_encrypt(struct blowfish *, uint32_t *, uint32_t *);
 
-/* Decrypt a buffer using the given context.
- *
- * This function has the same constraints as blowfish_encrypt().
+/* Decrypt a pair of 32-bit integers using the given context.
  */
-void blowfish_decrypt(struct blowfish *, void *dst, const void *src, size_t);
+void blowfish_decrypt(struct blowfish *, uint32_t *, uint32_t *);
 
 /* Compute the bcrypt digest for a given password.
  *

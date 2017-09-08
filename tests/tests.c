@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <assert.h>
 #include <string.h>
 #include <stdlib.h>
 #include "vectors2.h"
@@ -122,37 +123,15 @@ bcrypt_encode(struct bcrypt *bc, char *str)
     b64encode(str + 29, bc->digest, BLOWFISH_DIGEST_LENGTH - 1);
 }
 
-static void
-print_bytes(void *buf, size_t len)
-{
-    for (size_t i = 0; i < len; i++)
-        printf("%02x%c", ((unsigned char *)buf)[i], " \n"[i == len - 1]);
-}
-
 static int
-verify(void *a, void *b, size_t len)
+verify(uint32_t el, uint32_t er, uint32_t al, uint32_t ar)
 {
-    if (memcmp(a, b, len) != 0) {
-        printf("expect: ");
-        print_bytes(a, len);
-        printf("actual: ");
-        print_bytes(b, len);
+    if (er != ar || el != al) {
+        printf("expect: %08lx%08lx\n", (unsigned long)el, (unsigned long)er);
+        printf("actual: %08lx%08lx\n", (unsigned long)al, (unsigned long)ar);
         return 1;
     }
     return 0;
-}
-
-static void
-spill(uint8_t *p, uint32_t l, uint32_t r)
-{
-    p[0] = (uint8_t)(l >> 24);
-    p[1] = (uint8_t)(l >> 16);
-    p[2] = (uint8_t)(l >>  8);
-    p[3] = (uint8_t)(l >>  0);
-    p[4] = (uint8_t)(r >> 24);
-    p[5] = (uint8_t)(r >> 16);
-    p[6] = (uint8_t)(r >>  8);
-    p[7] = (uint8_t)(r >>  0);
 }
 
 int
@@ -184,40 +163,45 @@ main(void)
         /* Test simple string encryption / decryption */
         struct blowfish ctx[1];
         char key[] = "foobar";
-        char plain[] = "blowfishdeadbeef";
-        char cipher[16];
-        char output[16];
+        uint32_t msg[2] = {0xbb4191bc, 0xc51e9c62};
+        uint32_t copy[2];
         blowfish_init(ctx, key, sizeof(key) - 1);
-        blowfish_encrypt(ctx, cipher, plain, 16);
-        blowfish_decrypt(ctx, output, cipher, 16);
-        failures += verify(plain, output, 16);
+        copy[0] = msg[0];
+        copy[1] = msg[1];
+        blowfish_encrypt(ctx, copy, copy + 1);
+        assert(msg[0] != copy[0]);
+        assert(msg[1] != copy[1]);
+        blowfish_decrypt(ctx, copy, copy + 1);
+        failures += verify(msg[0], msg[1], copy[0], copy[1]);
     }
 
     for (int i = 0; i < NUM_VARIABLE_KEY_TESTS; i++) {
         struct blowfish ctx[1];
         blowfish_init(ctx, variable_key[i], 8);
-
-        uint8_t buf[8];
-        spill(buf, plaintext_l[i], plaintext_r[i]);
-        blowfish_encrypt(ctx, buf, buf, 8);
-
-        uint8_t ver[8];
-        spill(ver, ciphertext_l[i], ciphertext_r[i]);
-        failures += verify(ver, buf, 8);
+        uint32_t xl = plaintext_l[i];
+        uint32_t xr = plaintext_r[i];
+        blowfish_encrypt(ctx, &xl, &xr);
+        failures += verify(ciphertext_l[i], ciphertext_r[i], xl, xr);
     }
 
+    uint8_t *p = variable_key[NUM_VARIABLE_KEY_TESTS - 1];
     for (int z = 1; z <= (int)sizeof(set_key); z++) {
         struct blowfish ctx[1];
         blowfish_init(ctx, set_key, z);
+        uint32_t xl = ((uint32_t)p[0] << 24) |
+                      ((uint32_t)p[1] << 16) |
+                      ((uint32_t)p[2] <<  8) |
+                      ((uint32_t)p[3] <<  0);
+        uint32_t xr = ((uint32_t)p[4] << 24) |
+                      ((uint32_t)p[5] << 16) |
+                      ((uint32_t)p[6] <<  8) |
+                      ((uint32_t)p[7] <<  0);
+        blowfish_encrypt(ctx, &xl, &xr);
 
-        uint8_t buf[8];
-        uint8_t *plain = variable_key[NUM_VARIABLE_KEY_TESTS - 1];
-        blowfish_encrypt(ctx, buf, plain, 8);
-
-        uint8_t ver[8];
         int i = NUM_VARIABLE_KEY_TESTS + (int)z - 1;
-        spill(ver, ciphertext_l[i], ciphertext_r[i]);
-        failures += verify(ver, buf, 8);
+        uint32_t cl = ciphertext_l[i];
+        uint32_t cr = ciphertext_r[i];
+        failures += verify(cl, cr, xl, xr);
     }
 
     printf("%d failures\n", failures);
