@@ -31,13 +31,36 @@ struct termios {
 #define FILE_FILENO    5
 
 static HANDLE compat_file;
+static HANDLE compat_conin;
+static HANDLE compat_conout;
+static HCRYPTPROV compat_crypt;
 
 static int
 open(const char *path, int flags)
 {
     if (strcmp(path, "/dev/urandom") == 0) {
+        DWORD type = PROV_RSA_FULL;
+        DWORD flags = CRYPT_VERIFYCONTEXT | CRYPT_SILENT;
+        if (!CryptAcquireContext(&compat_crypt, 0, 0, type, flags)) {
+            errno = EACCES;
+            return -1;
+        }
         return URANDOM_FILENO;
     } else if (strcmp(path, "/dev/tty") == 0) {
+        DWORD access = GENERIC_READ | GENERIC_WRITE;
+        DWORD disp = OPEN_EXISTING;
+        DWORD flags = FILE_ATTRIBUTE_NORMAL;
+        compat_conin = CreateFile("CONIN$", access, 0, 0, disp, flags, 0);
+        if (compat_conin == INVALID_HANDLE_VALUE) {
+            errno = ENOENT;
+            return -1;
+        }
+        compat_conout = CreateFile("CONOUT$", access, 0, 0, disp, flags, 0);
+        if (compat_conout == INVALID_HANDLE_VALUE) {
+            CloseHandle(compat_conin);
+            errno = ENOENT;
+            return -1;
+        }
         return TTY_FILENO;
     } else {
         assert(flags == O_RDONLY);
@@ -55,11 +78,14 @@ close(int fd)
 {
     switch (fd) {
         case URANDOM_FILENO:
+            CryptReleaseContext(compat_crypt, 0);
+            return 0;
         case TTY_FILENO:
+            CloseHandle(compat_conin);
+            CloseHandle(compat_conout);
             return 0;
         case FILE_FILENO:
             CloseHandle(compat_file);
-            compat_file = INVALID_HANDLE_VALUE;
             return 0;
         default:
             abort();
@@ -97,35 +123,19 @@ read(int fd, void *buf, size_t len)
             return actual;
         }
         case URANDOM_FILENO: {
-            HCRYPTPROV h = 0;
-            DWORD type = PROV_RSA_FULL;
-            DWORD flags = CRYPT_VERIFYCONTEXT | CRYPT_SILENT;
-            if (!CryptAcquireContext(&h, 0, 0, type, flags) ||
-                !CryptGenRandom(h, len, buf)) {
+            if (!CryptGenRandom(compat_crypt, len, buf)) {
                 errno = EIO;
                 return -1;
             }
-            CryptReleaseContext(h, 0);
             return len;
         }
         case TTY_FILENO: {
-            DWORD access = GENERIC_READ | GENERIC_WRITE;
-            DWORD disp = OPEN_EXISTING;
-            DWORD flags = FILE_ATTRIBUTE_NORMAL;
-            HANDLE in = CreateFile("CONIN$", access, 0, 0, disp, flags, 0);
-            if (in == INVALID_HANDLE_VALUE) {
-                errno = EIO;
-                return -1;
-            }
-
             DWORD actual;
-            BOOL r = ReadConsole(in, buf, len, &actual, 0);
+            BOOL r = ReadConsole(compat_conin, buf, len, &actual, 0);
             if (!r) {
-                CloseHandle(in);
                 errno = EIO;
                 return -1;
             }
-            CloseHandle(in);
             return actual;
         }
         case FILE_FILENO: {
@@ -157,22 +167,12 @@ write(int fd, const void *buf, size_t len)
             return actual;
         }
         case TTY_FILENO: {
-            DWORD access = GENERIC_READ | GENERIC_WRITE;
-            DWORD disp = OPEN_EXISTING;
-            DWORD flags = FILE_ATTRIBUTE_NORMAL;
-            HANDLE out = CreateFile("CONOUT$", access, 0, 0, disp, flags, 0);
-            if (out == INVALID_HANDLE_VALUE) {
-                errno = EIO;
-                return -1;
-            }
             DWORD actual;
-            BOOL r = WriteConsole(out, buf, len, &actual, 0);
+            BOOL r = WriteConsole(compat_conout, buf, len, &actual, 0);
             if (!r) {
-                CloseHandle(out);
                 errno = EIO;
                 return -1;
             }
-            CloseHandle(out);
             return actual;
         }
         default:
