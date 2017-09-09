@@ -1,0 +1,65 @@
+.TH BLOWPIPE 1
+.SH NAME
+blowpipe \- create a Blowfish-encrypted, authenticated pipe
+.SH SYNOPSIS
+.B blowpipe
+[\-\fBD\fR|\-\fBE\fR]
+[\-\fBc\fR \fIcost\fR]
+[\-\fBk\fR \fIfile\fR]
+[\-\fBw\fR]
+.SH DESCRIPTION
+.B blowpipe
+is a \fItoy\fR that creates a Blowfish-encrypted, authenticated pipe.
+Each cryptographic primitive in use is built from the Blowfish cipher (bcrypt KDF, CTR mode Blowfish, CBC-MAC).
+.PP
+On decryption, the tool \fIonly\fR produces authenticated output.
+However, the overall output could still be truncated should something go wrong in the middle of a long stream.
+If the stream has been truncated, an error message will be produced and the exit status will reflect the error.
+.PP
+Since Blowfish is a 64-bit block cipher, it's only safe to encrypt up to a few tens of GBs at a time before birthday attacks become an issue.
+However, because of the initialization vector (IV), it's safe to reuse a password or key file to encrypt an arbitrary amount of data across separate runs.
+.SH OPTIONS
+Either of \fB-D\fR or \fB-E\fR must be specified.
+There is no default mode.
+.TP
+\fB\-D\fR
+Decrypt standard input to standard output.
+.TP
+\fB\-E\fB
+Encrypt standard input to standard output.
+.TP
+\fB\-c\fR \fIcost\fR
+In encryption mode (\fB\-E\fR), set the bcrypt cost.
+The cost is a power of two, so each increment doubles the total cost.
+In decryption mode, set the maximum permitted bcrypt cost.
+The default is low in order to prevent a malicious input from choosing a ridiculously large cost.
+.TP
+\fB\-k\fR \fIfile\fR
+Read key material from a file.
+By default little key stretching (\fB\-c\fR) is performed on this key.
+.TP
+\fB\-w\fR
+Wait for full chunks and don't flush chunks early.
+This increases latency in the pipe but decreases overhead.
+This option is meaningless if the input is a physical file.
+.SH EXAMPLES
+Encrypt/decrypt a file:
+.HP 2
+.nf
+$ blowpipe -E < data.gz > data.gz.enc
+$ blowpipe -D < data.gz.enc | gunzip > data.txt
+.fi
+.PP
+Encrypt/decrypt a TCP stream:
+.HP 2
+.nf
+## receiver
+$ nc -lp 2000 | blowpipe -D -k keyfile > data.zip || rm -f data.zip
+
+## sender
+$ blowpipe -E -k keyfile < data.zip | nc -N hostname 2000
+.fi
+.SH "SEE ALSO"
+.BR blowfish (3),
+.BR aepipe (1),
+.BR enchive (1)

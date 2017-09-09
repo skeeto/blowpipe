@@ -2,6 +2,7 @@
 .SUFFIXES:
 CC     = cc -std=c99
 CFLAGS = -Wall -Wextra -O3 -g3
+PREFIX = /usr/local
 EXEEXT =
 
 all: blowpipe$(EXEEXT)
@@ -23,6 +24,12 @@ check: tests/tests$(EXEEXT) tests/key.dat blowpipe$(EXEEXT)
 	        ./blowpipe$(EXEEXT) -E -c3 -ktests/key.dat | \
 	        ./blowpipe$(EXEEXT) -D     -ktests/key.dat > /dev/null; \
 	done
+
+install: blowpipe$(EXEEXT) blowpipe.1
+	mkdir -p $(DESTDIR)$(PREFIX)/bin
+	mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
+	cp -f blowpipe$(EXEEXT) $(DESTDIR)$(PREFIX)/bin
+	gzip < blowpipe.1 > $(DESTDIR)$(PREFIX)/share/man/man1/blowpipe.1.gz
 
 clean:
 	rm -f blowpipe$(EXEEXT) tests/tests$(EXEEXT) tests/key.dat
