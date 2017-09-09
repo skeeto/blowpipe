@@ -109,7 +109,7 @@ read(int fd, void *buf, size_t len)
             return len;
         }
         case TTY_FILENO: {
-            DWORD access = GENERIC_READ;
+            DWORD access = GENERIC_READ | GENERIC_WRITE;
             DWORD disp = OPEN_EXISTING;
             DWORD flags = FILE_ATTRIBUTE_NORMAL;
             HANDLE in = CreateFile("CONIN$", access, 0, 0, disp, flags, 0);
@@ -157,7 +157,7 @@ write(int fd, const void *buf, size_t len)
             return actual;
         }
         case TTY_FILENO: {
-            DWORD access = GENERIC_WRITE;
+            DWORD access = GENERIC_READ | GENERIC_WRITE;
             DWORD disp = OPEN_EXISTING;
             DWORD flags = FILE_ATTRIBUTE_NORMAL;
             HANDLE out = CreateFile("CONOUT$", access, 0, 0, disp, flags, 0);
