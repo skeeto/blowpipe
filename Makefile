@@ -1,26 +1,28 @@
 .POSIX:
+.SUFFIXES:
 CC     = cc -std=c99
 CFLAGS = -Wall -Wextra -O3 -g3
+EXEEXT =
 
-all: blowpipe
+all: blowpipe$(EXEEXT)
 
-blowpipe: blowpipe.c blowfish.c blowfish.h w32-compat/unistd.h
+blowpipe$(EXEEXT): blowpipe.c blowfish.c blowfish.h w32-compat/unistd.h
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ blowpipe.c blowfish.c
 
-tests/tests: tests/tests.c blowfish.c blowfish.h tests/vectors2.h
+tests/tests$(EXEEXT): tests/tests.c blowfish.c blowfish.h tests/vectors2.h
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ tests/tests.c blowfish.c
 
 tests/key.dat:
 	printf "helloworld" > $@
 
 test: check
-check: tests/tests tests/key.dat blowpipe
-	tests/tests
+check: tests/tests$(EXEEXT) tests/key.dat blowpipe$(EXEEXT)
+	tests/tests$(EXEEXT)
 	for len in $$(seq 0 10) $$(seq 65500 65600); do \
 	    head -c$$len /dev/urandom | \
-	        ./blowpipe -E -c3 -ktests/key.dat | \
-	        ./blowpipe -D     -ktests/key.dat > /dev/null; \
+	        ./blowpipe$(EXEEXT) -E -c3 -ktests/key.dat | \
+	        ./blowpipe$(EXEEXT) -D     -ktests/key.dat > /dev/null; \
 	done
 
 clean:
-	rm -f blowpipe tests/tests tests/key.dat
+	rm -f blowpipe$(EXEEXT) tests/tests$(EXEEXT) tests/key.dat
