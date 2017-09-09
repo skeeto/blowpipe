@@ -370,7 +370,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
 static void
 usage(FILE *o)
 {
-    fprintf(o, "usage: example [-D|-E] [-c cost] [-k file] [-w]\n");
+    fprintf(o, "usage: blowpipe [-D|-E] [-c cost] [-k file] [-w]\n");
 }
 
 int
