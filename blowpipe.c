@@ -20,6 +20,7 @@
 
 #define IV_LENGTH          16
 #define CHUNK_SIZE         (1UL << 16)
+#define CHUNK_SIZE_SIZE    2
 #define PASSPHRASE_COST    15
 #define KEYFILE_COST       0
 #define MAXIMUM_INPUT_COST 16
@@ -177,7 +178,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
     memset(chunk, 0, BLOWFISH_BLOCK_LENGTH);
     for (;;) {
         ssize_t z;
-        int headerlen = BLOWFISH_BLOCK_LENGTH + 2;
+        int headerlen = BLOWFISH_BLOCK_LENGTH + CHUNK_SIZE_SIZE;
         if (wait) {
             /* Read as much input as possible, but don't ever read()
              * again after getting 0 bytes on a read().
@@ -203,14 +204,16 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
 
         /* Zero-pad last block */
         size_t blocklen = BLOWFISH_BLOCK_LENGTH;
-        size_t msglen = z + 2;
+        size_t msglen = z + CHUNK_SIZE_SIZE;
         size_t nblocks = (msglen + blocklen - 1) / blocklen;
         size_t padding = nblocks * blocklen - msglen;
         memset(chunk + BLOWFISH_BLOCK_LENGTH + msglen, 0, padding);
 
         /* Write chunk length to chunk header */
-        chunk[BLOWFISH_BLOCK_LENGTH + 0] = msglen >> 8;
-        chunk[BLOWFISH_BLOCK_LENGTH + 1] = msglen >> 0;
+        for (int i = 0; i < CHUNK_SIZE_SIZE; i++) {
+            int shift = (CHUNK_SIZE_SIZE - 1 - i) * 8;
+            chunk[BLOWFISH_BLOCK_LENGTH + i] = msglen >> shift;
+        }
 
         /* Encrypt the buffer */
         for (size_t i = 0; i < nblocks; i++) {
@@ -261,7 +264,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
 
     for (;;) {
         /* Read in at least the header */
-        size_t headerlen = BLOWFISH_BLOCK_LENGTH + 2;
+        size_t headerlen = BLOWFISH_BLOCK_LENGTH + CHUNK_SIZE_SIZE;
         while (len < headerlen) {
             ssize_t z = read(STDIN_FILENO, chunk + len, CHUNK_SIZE - len);
             if (z < 0)
@@ -280,8 +283,11 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         encode_u32be(pad + 4, padr);
 
         /* Decrypt the chunk length */
-        uint8_t *lenptr = chunk + BLOWFISH_BLOCK_LENGTH;
-        size_t msglen = ((lenptr[0] ^ pad[0]) << 8) | (lenptr[1] ^ pad[1]);
+        size_t msglen = 0;
+        for (int i = 0; i < CHUNK_SIZE_SIZE; i++) {
+            msglen <<= 8;
+            msglen |= chunk[BLOWFISH_BLOCK_LENGTH + i] ^ pad[i];
+        }
         if (msglen > CHUNK_SIZE - BLOWFISH_BLOCK_LENGTH)
             DIE("ciphertext is corrupt");
 
@@ -343,14 +349,15 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
             DIE("ciphertext is corrupt");
 
         /* Quit after the empty chunk has been authenticated */
-        if (msglen == 2)
+        if (msglen == CHUNK_SIZE_SIZE)
             break;
 
         /* Write out decrypted ciphertext */
-        ssize_t w = write(STDOUT_FILENO, chunk + headerlen, msglen - 2);
+        size_t outlen = msglen - CHUNK_SIZE_SIZE;
+        ssize_t w = write(STDOUT_FILENO, chunk + headerlen, outlen);
         if (w < 0)
             DIE_ERRNO("writing plaintext");
-        if ((size_t)w != msglen - 2)
+        if ((size_t)w != outlen)
             DIE("failed to write plaintext");
 
         /* Move unprocessed bytes to beginning */
