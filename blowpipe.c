@@ -141,9 +141,9 @@ key_read(int fd, void *key, const void *iv, int cost)
     if (z == -1)
         DIE_ERRNO("reading key");
     if (z < BLOWFISH_MIN_KEY_LENGTH)
-        DIE("key is too short");
+        DIE("key is too short, must be between 1 and 72 bytes");
     if (z > BLOWFISH_MAX_KEY_LENGTH)
-        DIE("key is too long");
+        DIE("key is too long, must be between 1 and 72 bytes");
     blowfish_bcrypt(key, buf, z, iv, cost);
 }
 
@@ -293,7 +293,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         size_t msglen_min = CHUNK_SIZE_SIZE;
         size_t msglen_max = CHUNK_SIZE - BLOWFISH_BLOCK_LENGTH;
         if (msglen < msglen_min || msglen > msglen_max)
-            DIE("ciphertext is corrupt");
+            DIE("ciphertext is damaged");
 
         /* Read remainder of chunk */
         size_t blocklen = BLOWFISH_BLOCK_LENGTH;
@@ -350,7 +350,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         uint32_t cl = decode_u32be(chunk + 0);
         uint32_t cr = decode_u32be(chunk + 4);
         if (macl != cl || macr != cr)
-            DIE("ciphertext is corrupt");
+            DIE("ciphertext is damaged");
 
         /* Quit after the empty chunk has been authenticated */
         if (msglen == CHUNK_SIZE_SIZE)
@@ -437,7 +437,8 @@ main(int argc, char **argv)
             if (cost == -1)
                 cost = MAXIMUM_INPUT_COST;
             if (in_cost > cost)
-                DIE("bcrypt cost exceeds maximum (use -c to adjust)");
+                DIE("bcrypt cost exceeds maximum (%d > %d), use -c to adjust",
+                    in_cost, cost);
             cost = in_cost;
         } break;
         default: {
