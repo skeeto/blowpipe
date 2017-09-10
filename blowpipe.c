@@ -177,7 +177,6 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, unsigned flags)
     uint32_t macr = 0;
     static uint8_t chunk[CHUNK_SIZE];
 
-    memset(chunk, 0, BLOWFISH_BLOCK_LENGTH);
     for (;;) {
         ssize_t z;
         int headerlen = BLOWFISH_BLOCK_LENGTH + CHUNK_SIZE_SIZE;
