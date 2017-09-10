@@ -59,7 +59,7 @@ gen_iv(void *iv)
     if (fd == -1)
         DIE_ERRNO("/dev/urandom");
     ssize_t z = full_read(fd, iv, IV_LENGTH);
-    if (z < 0)
+    if (z == -1)
         DIE_ERRNO("/dev/urandom");
     if (z != IV_LENGTH)
         DIE("/dev/urandom IV generation failed");
@@ -70,7 +70,7 @@ static void
 read_iv(int fd, void *iv)
 {
     ssize_t z = full_read(fd, iv, IV_LENGTH + 1);
-    if (z < 0)
+    if (z == -1)
         DIE_ERRNO("reading ciphertext");
     if (z < IV_LENGTH)
         DIE("premature end of ciphertext");
@@ -99,7 +99,7 @@ passphrase_prompt(const char *prompt, char *buf)
     (void)write(tty, "\n", 1);            // don't care if this fails
 
     int result = 0;
-    if (z < 0)
+    if (z == -1)
         DIE_ERRNO("/dev/tty");
     if (z == 0 || buf[0] == '\n' || buf[0] == '\r')
         fputs("passphrase too short (must 1 to 72 bytes)\n", stderr);
@@ -137,7 +137,7 @@ key_read(int fd, void *key, const void *iv, int cost)
      */
     char buf[BLOWFISH_MAX_KEY_LENGTH + 1];
     ssize_t z = full_read(fd, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
-    if (z < 0)
+    if (z == -1)
         DIE_ERRNO("reading key");
     if (z < BLOWFISH_MIN_KEY_LENGTH)
         DIE("key is too short");
@@ -187,7 +187,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
             z = 0;
             while (!eof && avail) {
                 ssize_t r = read(STDIN_FILENO, chunk + headerlen + z, avail);
-                if (r < 0)
+                if (r == -1)
                     break;
                 if (r == 0)
                     eof = 1;
@@ -199,7 +199,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
             size_t avail = CHUNK_SIZE - headerlen;
             z = read(STDIN_FILENO, chunk + headerlen, avail);
         }
-        if (z < 0)
+        if (z == -1)
             DIE_ERRNO("reading plaintext");
 
         /* Zero-pad last block */
@@ -242,7 +242,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
         /* Write encrypted chunk */
         ssize_t len = msglen + BLOWFISH_BLOCK_LENGTH;
         ssize_t w = write(STDOUT_FILENO, chunk, len);
-        if (w < 0)
+        if (w == -1)
             DIE_ERRNO("reading ciphertext");
         if (w != len)
             DIE("failed to write ciphertext");
@@ -267,7 +267,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         size_t headerlen = BLOWFISH_BLOCK_LENGTH + CHUNK_SIZE_SIZE;
         while (len < headerlen) {
             ssize_t z = read(STDIN_FILENO, chunk + len, CHUNK_SIZE - len);
-            if (z < 0)
+            if (z == -1)
                 DIE_ERRNO("reading ciphertext");
             if (z == 0)
                 DIE("premature end of ciphertext");
@@ -297,7 +297,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         ssize_t remainder = msglen - len + blocklen;
         if (remainder > 0) {
             ssize_t z = full_read(STDIN_FILENO, chunk + len, remainder);
-            if (z < 0)
+            if (z == -1)
                 DIE_ERRNO("reading ciphertext");
             if (z != remainder)
                 DIE("premature end of ciphertext");
@@ -355,7 +355,7 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
         /* Write out decrypted ciphertext */
         size_t outlen = msglen - CHUNK_SIZE_SIZE;
         ssize_t w = write(STDOUT_FILENO, chunk + headerlen, outlen);
-        if (w < 0)
+        if (w == -1)
             DIE_ERRNO("writing plaintext");
         if ((size_t)w != outlen)
             DIE("failed to write plaintext");
@@ -472,7 +472,7 @@ main(int argc, char **argv)
     switch (mode) {
         case MODE_ENCRYPT:
             z = write(STDOUT_FILENO, iv, IV_LENGTH + 1);
-            if (z < 0)
+            if (z == -1)
                 DIE_ERRNO("writing ciphertext");
             if (z < IV_LENGTH + 1)
                 DIE("failed to write ciphertext");
