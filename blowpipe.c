@@ -25,9 +25,10 @@
 #define KEYFILE_COST       0
 #define MAXIMUM_INPUT_COST 16
 
-#define DIE(s) \
+#define DIE(...) \
     do { \
-        fprintf(stderr, "blowcrypt: fatal: %s\n", s); \
+        fprintf(stderr, "blowcrypt: fatal: " __VA_ARGS__); \
+        fputc('\n', stderr); \
         exit(EXIT_FAILURE); \
     } while (0)
 
