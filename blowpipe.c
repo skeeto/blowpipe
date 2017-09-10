@@ -419,6 +419,10 @@ main(int argc, char **argv)
     if (mode == MODE_DECRYPT && (eflags & FLAG_WAIT))
         DIE("wait option (-w) is only for encryption (-E)");
 
+    /* Make sure there are no more arguments */
+    if (argv[optind])
+        DIE("excess non-option command line arguments: %s", argv[optind]);
+
     char iv[IV_LENGTH + 1];
     struct blowfish crypt[1];
     struct blowfish mac[1];
