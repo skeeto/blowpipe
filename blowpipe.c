@@ -440,6 +440,7 @@ main(int argc, char **argv)
             cost = in_cost;
         } break;
         default: {
+            fputs("blowpipe: ", stderr);
             fputs("must select encrypt (-E) or decrypt (-D)\n", stderr);
             usage(stderr);
             exit(EXIT_FAILURE);
