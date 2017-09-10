@@ -492,4 +492,5 @@ main(int argc, char **argv)
             decrypt(crypt, mac);
             break;
     }
+    return 0;
 }
