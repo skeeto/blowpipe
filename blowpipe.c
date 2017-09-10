@@ -166,8 +166,10 @@ decode_u32be(const void *buf)
            ((uint32_t)p[3] <<  0);
 }
 
+#define FLAG_WAIT (1u << 0)
+
 static void
-encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
+encrypt(struct blowfish *crypt, struct blowfish *mac, unsigned flags)
 {
     int eof = 0;
     uint64_t ctr = 0;
@@ -179,7 +181,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, int wait)
     for (;;) {
         ssize_t z;
         int headerlen = BLOWFISH_BLOCK_LENGTH + CHUNK_SIZE_SIZE;
-        if (wait) {
+        if (flags & FLAG_WAIT) {
             /* Read as much input as possible, but don't ever read()
              * again after getting 0 bytes on a read().
              */
@@ -476,7 +478,7 @@ main(int argc, char **argv)
                 DIE_ERRNO("writing ciphertext");
             if (z < IV_LENGTH + 1)
                 DIE("failed to write ciphertext");
-            encrypt(crypt, mac, wait);
+            encrypt(crypt, mac, wait ? FLAG_WAIT : 0);
             break;
         case MODE_DECRYPT:
             decrypt(crypt, mac);
