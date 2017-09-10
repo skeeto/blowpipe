@@ -382,7 +382,7 @@ main(int argc, char **argv)
     /* Options */
     const char *keyfile = 0;
     int cost = -1;
-    int wait = 0;
+    unsigned eflags = 0;
     enum {MODE_ENCRYPT = 1, MODE_DECRYPT} mode = 0;
 
     int option;
@@ -407,7 +407,7 @@ main(int argc, char **argv)
                 keyfile = optarg;
                 break;
             case 'w':
-                wait = 1;
+                eflags |= FLAG_WAIT;
                 break;
             default:
                 exit(EXIT_FAILURE);
@@ -415,7 +415,7 @@ main(int argc, char **argv)
     }
 
     /* Check for invalid option combinations */
-    if (mode == MODE_DECRYPT && wait)
+    if (mode == MODE_DECRYPT && (eflags & FLAG_WAIT))
         DIE("wait option (-w) is only for encryption (-E)");
 
     char iv[IV_LENGTH + 1];
@@ -479,7 +479,7 @@ main(int argc, char **argv)
                 DIE_ERRNO("writing ciphertext");
             if (z < IV_LENGTH + 1)
                 DIE("failed to write ciphertext");
-            encrypt(crypt, mac, wait ? FLAG_WAIT : 0);
+            encrypt(crypt, mac, eflags);
             break;
         case MODE_DECRYPT:
             decrypt(crypt, mac);
