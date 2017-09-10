@@ -289,7 +289,9 @@ decrypt(struct blowfish *crypt, struct blowfish *mac)
             msglen <<= 8;
             msglen |= chunk[BLOWFISH_BLOCK_LENGTH + i] ^ pad[i];
         }
-        if (msglen > CHUNK_SIZE - BLOWFISH_BLOCK_LENGTH)
+        size_t msglen_min = CHUNK_SIZE_SIZE;
+        size_t msglen_max = CHUNK_SIZE - BLOWFISH_BLOCK_LENGTH;
+        if (msglen < msglen_min || msglen > msglen_max)
             DIE("ciphertext is corrupt");
 
         /* Read remainder of chunk */
