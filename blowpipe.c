@@ -245,7 +245,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, unsigned flags)
         ssize_t len = msglen + BLOWFISH_BLOCK_LENGTH;
         ssize_t w = write(STDOUT_FILENO, chunk, len);
         if (w == -1)
-            DIE_ERRNO("reading ciphertext");
+            DIE_ERRNO("writing ciphertext");
         if (w != len)
             DIE("failed to write ciphertext");
 
