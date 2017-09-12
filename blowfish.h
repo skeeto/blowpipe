@@ -10,9 +10,7 @@
 #define BLOWFISH_BLOCK_LENGTH    8
 #define BLOWFISH_SALT_LENGTH     16
 #define BLOWFISH_DIGEST_LENGTH   24
-#define BLOWFISH_MIN_KEY_LENGTH  1
 #define BLOWFISH_MAX_KEY_LENGTH  72
-#define BLOWFISH_MIN_COST        0
 #define BLOWFISH_MAX_COST        63
 
 struct blowfish {
@@ -22,7 +20,9 @@ struct blowfish {
 
 /* Initialize a cipher context with the given key.
  *
- * The key length must be between 1 and 72 bytes.
+ * The maximum key length is 72 bytes. Generally the key length should
+ * not exceed 56 bytes since the last 16 bytes do not affect every bit
+ * of each subkey.
  */
 void blowfish_init(struct blowfish *, const void *key, int len);
 
@@ -40,13 +40,12 @@ void blowfish_decrypt(struct blowfish *, uint32_t *, uint32_t *);
  *
  * The digest must have space for 24 bytes (BLOWFISH_DIGEST_LENGTH).
  *
- * The password length must be between 1 and 72 bytes. Note: As a
- * convention, OpenBSD's bcrypt() includes the null terminator byte in
- * the key.
+ * The maximum password length is 72 bytes. Note: As a convention,
+ * OpenBSD's bcrypt() includes the null terminator byte in the key.
  *
  * The salt must be 16 bytes (BLOWFISH_SALT_LENGTH).
  *
- * The cost must be between 0 and 63.
+ * The maximum cost is 63.
  */
 void blowfish_bcrypt(
     void *digest,

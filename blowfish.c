@@ -377,12 +377,17 @@ blowfish_expand(
 void
 blowfish_init(struct blowfish *ctx, const void *key, int len)
 {
-    assert(len >= BLOWFISH_MIN_KEY_LENGTH && len <= BLOWFISH_MAX_KEY_LENGTH);
+    assert(len >= 0 && len <= BLOWFISH_MAX_KEY_LENGTH);
 
-    unsigned char salt[BLOWFISH_SALT_LENGTH] = {0};
+    unsigned char zero[BLOWFISH_SALT_LENGTH] = {0};
+    if (!len) {
+        key = zero;
+        len = sizeof(zero);
+    }
+
     memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
     memcpy(ctx->p, blowfish_p, sizeof(blowfish_p));
-    blowfish_expand(ctx, key, len, &salt);
+    blowfish_expand(ctx, key, len, &zero);
 }
 
 void
@@ -393,8 +398,14 @@ blowfish_bcrypt(
         const void *salt,
         int cost)
 {
-    assert(len >= BLOWFISH_MIN_KEY_LENGTH && len <= BLOWFISH_MAX_KEY_LENGTH);
-    assert(cost >= BLOWFISH_MIN_COST && cost <= BLOWFISH_MAX_COST);
+    assert(len >= 0 && len <= BLOWFISH_MAX_KEY_LENGTH);
+    assert(cost >= 0 && cost <= BLOWFISH_MAX_COST);
+
+    unsigned char zero[BLOWFISH_SALT_LENGTH] = {0};
+    if (!len) {
+        pwd = zero;
+        len = sizeof(zero);
+    }
 
     struct blowfish ctx[1];
     memcpy(ctx->s, blowfish_s, sizeof(blowfish_s));
@@ -402,7 +413,6 @@ blowfish_bcrypt(
 
     blowfish_expand(ctx, pwd, len, salt);
 
-    unsigned char zero[BLOWFISH_SALT_LENGTH] = {0};
     unsigned long long n = 1ULL << cost;
     for (unsigned long long i = 0; i < n; i++) {
         blowfish_expand(ctx, pwd, len, &zero);

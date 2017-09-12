@@ -77,7 +77,7 @@ read_iv(int fd, void *iv)
         DIE("premature end of ciphertext");
 }
 
-static int
+static void
 passphrase_prompt(const char *prompt, char *buf)
 {
     int tty = open("/dev/tty", O_RDWR);
@@ -99,31 +99,29 @@ passphrase_prompt(const char *prompt, char *buf)
     (void)tcsetattr(tty, TCSANOW, &old);  // don't care if this fails
     (void)write(tty, "\n", 1);            // don't care if this fails
 
-    int result = 0;
     if (z == -1)
         DIE_ERRNO("/dev/tty");
-    if (z == 0 || buf[0] == '\n' || buf[0] == '\r')
-        fputs("passphrase too short (must 1 to 72 bytes)\n", stderr);
-    else if (z > BLOWFISH_MAX_KEY_LENGTH && buf[z] != '\n')
-        fputs("passphrase too long (must 1 to 72 bytes)\n", stderr);
-    else {
-        if (z >= 2 && buf[z - 2] == '\r')
-            buf[z - 2] = 0;
-        buf[z - 1] = 0;
-        result = 1;
+    else if (z > BLOWFISH_MAX_KEY_LENGTH && (buf[z] != '\n' || buf[z] != '\r'))
+        DIE("passphrase too long (maximum 56 bytes)");
+    else if (z == 0) {
+        buf[z] = 0;
+    } else {
+        buf[z] = 0;
+        char *end;
+        if ((end = strchr(buf, '\r')))
+            *end = 0;
+        else if ((end = strchr(buf, '\n')))
+            *end = 0;
     }
-    return result;
 }
 
 static void
 passphrase_kdf(void *key, const void *iv, int cost, int verify)
 {
     char buf[2][BLOWFISH_MAX_KEY_LENGTH + 1];
-    while (!passphrase_prompt("Passphrase: ", buf[0]))
-        ;
+    passphrase_prompt("Passphrase: ", buf[0]);
     if (verify) {
-        while (!passphrase_prompt("Passphrase (repeat): ", buf[1]))
-            ;
+        passphrase_prompt("Passphrase (repeat): ", buf[1]);
         if (strcmp(buf[0], buf[1]) != 0)
             DIE("passphrases do not match");
     }
@@ -140,10 +138,8 @@ key_read(int fd, void *key, const void *iv, int cost)
     ssize_t z = full_read(fd, buf, BLOWFISH_MAX_KEY_LENGTH + 1);
     if (z == -1)
         DIE_ERRNO("reading key");
-    if (z < BLOWFISH_MIN_KEY_LENGTH)
-        DIE("key is too short, must be between 1 and 72 bytes");
     if (z > BLOWFISH_MAX_KEY_LENGTH)
-        DIE("key is too long, must be between 1 and 72 bytes");
+        DIE("key is too long (maximum 72 bytes)");
     blowfish_bcrypt(key, buf, z, iv, cost);
 }
 
@@ -397,7 +393,7 @@ main(int argc, char **argv)
                 break;
             case 'c':
                 cost = atoi(optarg);
-                if (cost < BLOWFISH_MIN_COST || cost > BLOWFISH_MAX_COST)
+                if (cost < 0 || cost > BLOWFISH_MAX_COST)
                     DIE("invalid cost (must be 1 to 63)");
                 break;
             case 'h':
