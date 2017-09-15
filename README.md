@@ -35,10 +35,9 @@ message will be produced and the exit status will reflect the error.
 
 Since Blowfish is a 64-bit block cipher, it's only safe to encrypt up to
 a few tens of GBs at a time before birthday attacks become an issue.
-However, because of the initialization vector (IV), it's safe to reuse a
-password or key file to encrypt an arbitrary amount of data across
-separate runs. Other than the block size, Blowfish is still a solid
-cipher.
+However, because of the key salt, it's safe to reuse a password or key
+file to encrypt an arbitrary amount of data across separate runs. Other
+than the block size, Blowfish is still a solid cipher.
 
 Despite being a toy, Blowpipe is more secure than a few crypto tools
 typically packaged by a Linux distribution, such as the ["bcrypt" file
@@ -61,8 +60,8 @@ upon a stronger, newer cipher (AES).
 
 The overall wire format:
 
-* 16-byte random initialization vector (IV)
-* 1-byte bcrypt cost: last IV byte + cost, modulo 256
+* 16-byte random salt
+* 1-byte bcrypt cost: last salt byte + cost, modulo 256
 * one or more chunks
 
 The format is stream-oriented and data is processed in separate chunks

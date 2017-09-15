@@ -18,7 +18,7 @@
 
 #include "blowfish.h"
 
-#define IV_LENGTH          16
+#define SALT_LENGTH        16
 #define CHUNK_SIZE         (1UL << 16)
 #define CHUNK_SIZE_SIZE    2
 #define PASSPHRASE_COST    15
@@ -54,26 +54,26 @@ full_read(int fd, void *buf, size_t len)
 }
 
 static void
-gen_iv(void *iv)
+generate_salt(void *salt)
 {
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd == -1)
         DIE_ERRNO("/dev/urandom");
-    ssize_t z = full_read(fd, iv, IV_LENGTH);
+    ssize_t z = full_read(fd, salt, SALT_LENGTH);
     if (z == -1)
         DIE_ERRNO("/dev/urandom");
-    if (z != IV_LENGTH)
-        DIE("/dev/urandom IV generation failed");
+    if (z != SALT_LENGTH)
+        DIE("/dev/urandom salt generation failed");
     close(fd);
 }
 
 static void
-read_iv(int fd, void *iv)
+read_salt(int fd, void *salt)
 {
-    ssize_t z = full_read(fd, iv, IV_LENGTH + 1);
+    ssize_t z = full_read(fd, salt, SALT_LENGTH + 1);
     if (z == -1)
         DIE_ERRNO("reading ciphertext");
-    if (z < IV_LENGTH)
+    if (z < SALT_LENGTH)
         DIE("premature end of ciphertext");
 }
 
@@ -116,7 +116,7 @@ passphrase_prompt(const char *prompt, char *buf)
 }
 
 static void
-passphrase_kdf(void *key, const void *iv, int cost, int verify)
+passphrase_kdf(void *key, const void *salt, int cost, int verify)
 {
     char buf[2][BLOWFISH_MAX_KEY_LENGTH + 1];
     passphrase_prompt("Passphrase: ", buf[0]);
@@ -125,11 +125,11 @@ passphrase_kdf(void *key, const void *iv, int cost, int verify)
         if (strcmp(buf[0], buf[1]) != 0)
             DIE("passphrases do not match");
     }
-    blowfish_bcrypt(key, buf, strlen(buf[0]) + 1, iv, cost);
+    blowfish_bcrypt(key, buf, strlen(buf[0]) + 1, salt, cost);
 }
 
 static void
-key_read(int fd, void *key, const void *iv, int cost)
+key_read(int fd, void *key, const void *salt, int cost)
 {
     /* Read one over the maximum key length. The extra character will
      * detect an overly-long key.
@@ -140,7 +140,7 @@ key_read(int fd, void *key, const void *iv, int cost)
         DIE_ERRNO("reading key");
     if (z > BLOWFISH_MAX_KEY_LENGTH)
         DIE("key is too long (maximum 72 bytes)");
-    blowfish_bcrypt(key, buf, z, iv, cost);
+    blowfish_bcrypt(key, buf, z, salt, cost);
 }
 
 static void
@@ -419,19 +419,19 @@ main(int argc, char **argv)
     if (argv[optind])
         DIE("excess non-option command line arguments: %s", argv[optind]);
 
-    char iv[IV_LENGTH + 1];
+    char salt[SALT_LENGTH + 1];
     struct blowfish crypt[1];
     struct blowfish mac[1];
 
-    /* Get the IV before asking for a password, in case it fails */
+    /* Get the salt before asking for a password, in case it fails */
     switch (mode) {
         case MODE_ENCRYPT: {
-            gen_iv(iv);
+            generate_salt(salt);
         } break;
         case MODE_DECRYPT: {
-            read_iv(STDIN_FILENO, iv);
-            int in_cost = iv[IV_LENGTH] + 256;
-            in_cost = (in_cost - iv[IV_LENGTH - 1]) % 256;
+            read_salt(STDIN_FILENO, salt);
+            int in_cost = salt[SALT_LENGTH] + 256;
+            in_cost = (in_cost - salt[SALT_LENGTH - 1]) % 256;
             if (in_cost > BLOWFISH_MAX_COST)
                 DIE("ciphertext is damaged");
             if (cost == -1)
@@ -455,17 +455,17 @@ main(int argc, char **argv)
         int verify = mode == MODE_ENCRYPT;
         if (cost == -1)
             cost = PASSPHRASE_COST;
-        passphrase_kdf(key, iv, cost, verify);
+        passphrase_kdf(key, salt, cost, verify);
     } else {
         int fd = open(keyfile, O_RDONLY);
         if (fd == -1)
             DIE_ERRNO(keyfile);
         if (cost == -1)
             cost = KEYFILE_COST;
-        key_read(fd, key, iv, cost);
+        key_read(fd, key, salt, cost);
         close(fd);
     }
-    iv[IV_LENGTH] = iv[IV_LENGTH - 1] + cost;
+    salt[SALT_LENGTH] = salt[SALT_LENGTH - 1] + cost;
     blowfish_init(crypt, key, BLOWFISH_DIGEST_LENGTH);
 
     /* Initialize the MAC by deriving another key */
@@ -477,10 +477,10 @@ main(int argc, char **argv)
     ssize_t z;
     switch (mode) {
         case MODE_ENCRYPT:
-            z = write(STDOUT_FILENO, iv, IV_LENGTH + 1);
+            z = write(STDOUT_FILENO, salt, SALT_LENGTH + 1);
             if (z == -1)
                 DIE_ERRNO("writing ciphertext");
-            if (z < IV_LENGTH + 1)
+            if (z < SALT_LENGTH + 1)
                 DIE("failed to write ciphertext");
             encrypt(crypt, mac, eflags);
             break;
