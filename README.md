@@ -56,6 +56,22 @@ upon a stronger, newer cipher (AES).
     -k file  read key material from given file
     -w       wait for full chunks and don't flush early
 
+## Installation
+
+Use the PREFIX variable to control the installation path. The default is
+to install under `/usr/local`.
+
+    $ make PREFIX=$HOME/.local install
+
+To build with MinGW-w64, set CC and EXEEXT. On Linux you can even run
+the test suite (`make check`) if you have the Wine binfmt configured.
+
+    $ make CC=x86_64-w64-mingw32-gcc EXEEXT=.exe
+
+To build with MSVC use this command:
+
+    cl.exe -Ox blowpipe.c blowfish.c advapi32.lib
+
 ## Wire format
 
 The overall wire format:
