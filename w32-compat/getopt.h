@@ -8,7 +8,7 @@
  *
  * Ref: http://pubs.opengroup.org/onlinepubs/9699919799/functions/getopt.html
  */
-#ifndef GETOPT_H
+#if !defined(GETOPT_H) && defined(_WIN32)
 #define GETOPT_H
 
 #include <ctype.h>

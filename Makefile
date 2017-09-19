@@ -16,6 +16,11 @@ tests/tests$(EXEEXT): tests/tests.c blowfish.c blowfish.h tests/vectors2.h
 tests/key.dat:
 	printf "helloworld" > $@
 
+blowpipe-cli.c: blowpipe.c blowfish.c blowfish.h w32-compat/unistd.h
+	cat blowfish.h w32-compat/getopt.h w32-compat/unistd.h \
+	    blowfish.c blowpipe.c | \
+	    sed -r 's@^(#include +".+)@/* \1 */@g' > $@
+
 test: check
 check: tests/tests$(EXEEXT) tests/key.dat blowpipe$(EXEEXT)
 	tests/tests$(EXEEXT)
@@ -25,6 +30,8 @@ check: tests/tests$(EXEEXT) tests/key.dat blowpipe$(EXEEXT)
 	        ./blowpipe$(EXEEXT) -D     -ktests/key.dat > /dev/null; \
 	done
 
+amalgamation: blowpipe-cli.c
+
 install: blowpipe$(EXEEXT) blowpipe.1
 	mkdir -p $(DESTDIR)$(PREFIX)/bin
 	mkdir -p $(DESTDIR)$(PREFIX)/share/man/man1
@@ -32,4 +39,5 @@ install: blowpipe$(EXEEXT) blowpipe.1
 	gzip < blowpipe.1 > $(DESTDIR)$(PREFIX)/share/man/man1/blowpipe.1.gz
 
 clean:
-	rm -f blowpipe$(EXEEXT) tests/tests$(EXEEXT) tests/key.dat
+	rm -f blowpipe$(EXEEXT) tests/tests$(EXEEXT)
+	rm -f tests/key.dat blowpipe-cli.c

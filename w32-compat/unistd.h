@@ -2,7 +2,7 @@
  *
  * Only the tiny, tiny subset of POSIX needed by Blowpipe is implemented.
  */
-#ifndef W32_COMPAT_H
+#if !defined(W32_COMPAT_H) && defined(_WIN32)
 #define W32_COMPAT_H
 
 #include <errno.h>
@@ -12,6 +12,10 @@
 #include <string.h>
 
 #include <windows.h>
+
+#ifdef _MSC_VER
+#  pragma comment(lib, "advapi32.lib")
+#endif
 
 typedef SSIZE_T ssize_t;
 

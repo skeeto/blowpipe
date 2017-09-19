@@ -68,9 +68,13 @@ the test suite (`make check`) if you have the Wine binfmt configured.
 
     $ make CC=x86_64-w64-mingw32-gcc EXEEXT=.exe
 
-To build with MSVC use this command:
+To quickly build with MSVC:
 
-    cl.exe -Ox blowpipe.c blowfish.c advapi32.lib
+    cl.exe -Ox blowpipe.c blowfish.c
+
+There's also an `amalgamation` target, which will combine all sources
+and headers into a single C source file, `blowpipe-cli.c`, ready to be
+compiled trivially anywhere by any C99 compiler.
 
 ## Wire format
 
