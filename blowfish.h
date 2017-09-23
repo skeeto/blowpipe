@@ -28,11 +28,11 @@ void blowfish_init(struct blowfish *, const void *key, int len);
 
 /* Encrypt a pair of 32-bit integers using the given context.
  */
-void blowfish_encrypt(struct blowfish *, uint32_t *, uint32_t *);
+void blowfish_encrypt(const struct blowfish *, uint32_t *, uint32_t *);
 
 /* Decrypt a pair of 32-bit integers using the given context.
  */
-void blowfish_decrypt(struct blowfish *, uint32_t *, uint32_t *);
+void blowfish_decrypt(const struct blowfish *, uint32_t *, uint32_t *);
 
 /* Compute the bcrypt digest for a given password.
  *

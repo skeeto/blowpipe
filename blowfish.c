@@ -270,7 +270,7 @@ static const uint32_t blowfish_s[] = {
 };
 
 static uint32_t
-blowfish_f(uint32_t s[4][256], uint32_t x)
+blowfish_f(const uint32_t s[4][256], uint32_t x)
 {
     /* big endian */
     uint32_t b = 0xff;
@@ -299,7 +299,7 @@ blowfish_write(uint8_t *p, uint32_t v)
 }
 
 void
-blowfish_encrypt(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
+blowfish_encrypt(const struct blowfish *ctx, uint32_t *bl, uint32_t *br)
 {
     uint32_t xl = *bl;
     uint32_t xr = *br;
@@ -316,7 +316,7 @@ blowfish_encrypt(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
 }
 
 void
-blowfish_decrypt(struct blowfish *ctx, uint32_t *bl, uint32_t *br)
+blowfish_decrypt(const struct blowfish *ctx, uint32_t *bl, uint32_t *br)
 {
     uint32_t xl = *bl;
     uint32_t xr = *br;
