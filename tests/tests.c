@@ -139,7 +139,7 @@ main(void)
 {
     int failures = 0;
 
-    /* Test bcrypt */
+    /* bcrypt tests */
     for (size_t i = 0; i < NUM_BCRYPT_VECTORS; i++) {
         struct bcrypt bc[1];
         const char *pwd = bcrypt_vectors[i * 2 + 0];
@@ -159,49 +159,33 @@ main(void)
         }
     }
 
-    {
-        /* Test simple string encryption / decryption */
-        struct blowfish ctx[1];
-        char key[] = "foobar";
-        uint32_t msg[2] = {0xbb4191bc, 0xc51e9c62};
-        uint32_t copy[2];
-        blowfish_init(ctx, key, sizeof(key) - 1);
-        copy[0] = msg[0];
-        copy[1] = msg[1];
-        blowfish_encrypt(ctx, copy, copy + 1);
-        assert(msg[0] != copy[0]);
-        assert(msg[1] != copy[1]);
-        blowfish_decrypt(ctx, copy, copy + 1);
-        failures += verify(msg[0], msg[1], copy[0], copy[1]);
-    }
-
+    /* variable key tests */
     for (int i = 0; i < NUM_VARIABLE_KEY_TESTS; i++) {
         struct blowfish ctx[1];
         blowfish_init(ctx, variable_key[i], 8);
+
         uint32_t xl = plaintext_l[i];
         uint32_t xr = plaintext_r[i];
         blowfish_encrypt(ctx, &xl, &xr);
         failures += verify(ciphertext_l[i], ciphertext_r[i], xl, xr);
+
+        blowfish_decrypt(ctx, &xl, &xr);
+        failures += verify(plaintext_l[i], plaintext_r[i], xl, xr);
     }
 
-    uint8_t *p = variable_key[NUM_VARIABLE_KEY_TESTS - 1];
-    for (int z = 1; z <= (int)sizeof(set_key); z++) {
+    /* set key tests */
+    for (int z = 1; z <= NUM_SET_KEY_TESTS; z++) {
         struct blowfish ctx[1];
         blowfish_init(ctx, set_key, z);
-        uint32_t xl = ((uint32_t)p[0] << 24) |
-                      ((uint32_t)p[1] << 16) |
-                      ((uint32_t)p[2] <<  8) |
-                      ((uint32_t)p[3] <<  0);
-        uint32_t xr = ((uint32_t)p[4] << 24) |
-                      ((uint32_t)p[5] << 16) |
-                      ((uint32_t)p[6] <<  8) |
-                      ((uint32_t)p[7] <<  0);
-        blowfish_encrypt(ctx, &xl, &xr);
 
         int i = NUM_VARIABLE_KEY_TESTS + (int)z - 1;
-        uint32_t cl = ciphertext_l[i];
-        uint32_t cr = ciphertext_r[i];
-        failures += verify(cl, cr, xl, xr);
+        uint32_t xl = plaintext_l[i];
+        uint32_t xr = plaintext_r[i];
+        blowfish_encrypt(ctx, &xl, &xr);
+        failures += verify(ciphertext_l[i], ciphertext_r[i], xl, xr);
+
+        blowfish_decrypt(ctx, &xl, &xr);
+        failures += verify(plaintext_l[i], plaintext_r[i], xl, xr);
     }
 
     printf("%d failures\n", failures);
