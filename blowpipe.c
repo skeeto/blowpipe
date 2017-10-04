@@ -1,5 +1,5 @@
 /* Blowpipe --- authenticated Blowfish-encrypted pipe */
-#define _POSIX_SOURCE 1
+#define _POSIX_C_SOURCE 2
 #include <stdio.h>
 #include <assert.h>
 #include <stdlib.h>
@@ -11,7 +11,6 @@
 #else
 #include <errno.h>
 #include <fcntl.h>
-#include <getopt.h>
 #include <unistd.h>
 #include <termios.h>
 #endif
@@ -166,7 +165,7 @@ decode_u32be(const void *buf)
 #define FLAG_WAIT (1u << 0)
 
 static void
-encrypt(struct blowfish *crypt, struct blowfish *mac, unsigned flags)
+bp_encrypt(struct blowfish *crypt, struct blowfish *mac, unsigned flags)
 {
     int eof = 0;
     uint64_t ctr = 0;
@@ -252,7 +251,7 @@ encrypt(struct blowfish *crypt, struct blowfish *mac, unsigned flags)
 }
 
 static void
-decrypt(struct blowfish *crypt, struct blowfish *mac)
+bp_decrypt(struct blowfish *crypt, struct blowfish *mac)
 {
     size_t len = 0;
     uint64_t ctr = 0;
@@ -482,10 +481,10 @@ main(int argc, char **argv)
                 DIE_ERRNO("writing ciphertext");
             if (z < SALT_LENGTH + 1)
                 DIE("failed to write ciphertext");
-            encrypt(crypt, mac, eflags);
+            bp_encrypt(crypt, mac, eflags);
             break;
         case MODE_DECRYPT:
-            decrypt(crypt, mac);
+            bp_decrypt(crypt, mac);
             break;
     }
     return 0;
