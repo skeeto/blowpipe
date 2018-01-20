@@ -100,7 +100,7 @@ passphrase_prompt(const char *prompt, char *buf)
 
     if (z == -1)
         DIE_ERRNO("/dev/tty");
-    else if (z > BLOWFISH_MAX_KEY_LENGTH && (buf[z] != '\n' || buf[z] != '\r'))
+    else if (z > BLOWFISH_MAX_KEY_LENGTH && (buf[z] != '\n' && buf[z] != '\r'))
         DIE("passphrase too long (maximum 56 bytes)");
     else if (z == 0) {
         buf[z] = 0;
