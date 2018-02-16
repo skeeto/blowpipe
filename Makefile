@@ -17,9 +17,10 @@ tests/key.dat:
 	printf "helloworld" > $@
 
 blowpipe-cli.c: blowpipe.c blowfish.c blowfish.h w32-compat/unistd.h
-	cat blowfish.h w32-compat/getopt.h w32-compat/unistd.h \
-	    blowfish.c blowpipe.c | \
-	    sed -r 's@^(#include +".+)@/* \1 */@g' > $@
+	echo '#define _POSIX_C_SOURCE 200112L' | \
+	    cat - blowfish.h w32-compat/getopt.h w32-compat/unistd.h \
+	          blowfish.c blowpipe.c | \
+	          sed -r 's@^(#include +".+)@/* \1 */@g' > $@
 
 test: check
 check: tests/tests$(EXEEXT) tests/key.dat blowpipe$(EXEEXT)
